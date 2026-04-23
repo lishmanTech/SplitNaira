@@ -3,7 +3,7 @@
 use super::*;
 use soroban_sdk::{
     testutils::{Address as _, Events as _},
-    token, Address, Env, IntoVal, String, Symbol, Vec, vec,
+    token, vec, Address, Env, IntoVal, String, Symbol, Vec,
 };
 
 // ============================================================
@@ -1213,7 +1213,14 @@ fn test_distribute_fails_when_paused() {
     );
 
     // Deposit funds
-    deposit_to_project(&env, &client, &token, &project_id, &funder, 1000_0000000i128);
+    deposit_to_project(
+        &env,
+        &client,
+        &token,
+        &project_id,
+        &funder,
+        1000_0000000i128,
+    );
     assert_eq!(client.get_balance(&project_id), 1000_0000000i128);
 
     // Pause distributions
@@ -1658,10 +1665,7 @@ fn test_lifecycle_pre_lock_edit_lock_post_lock_reject() {
         after_metadata.title,
         String::from_str(&env, "Lifecycle Project (renamed)")
     );
-    assert_eq!(
-        after_metadata.project_type,
-        String::from_str(&env, "film")
-    );
+    assert_eq!(after_metadata.project_type, String::from_str(&env, "film"));
 
     // 4. Owner locks the project — allowed.
     client.lock_project(&project_id, &owner);
@@ -1674,8 +1678,7 @@ fn test_lifecycle_pre_lock_edit_lock_post_lock_reject() {
         Vec::from_slice(&env, &[alice.clone(), bob.clone()]),
         Vec::from_slice(&env, &[7000u32, 3000u32]),
     );
-    let collab_result =
-        client.try_update_collaborators(&project_id, &owner, &post_lock_collabs);
+    let collab_result = client.try_update_collaborators(&project_id, &owner, &post_lock_collabs);
     assert_eq!(collab_result, Err(Ok(SplitError::ProjectLocked)));
 
     // 6. Owner tries to edit metadata after lock — ProjectLocked.
@@ -1763,13 +1766,18 @@ fn test_non_owner_cannot_update_collaborators() {
         Vec::from_slice(&env, &[alice, bob, carol]),
         Vec::from_slice(&env, &[1000u32, 1000u32, 8000u32]),
     );
-    let result =
-        client.try_update_collaborators(&project_id, &not_owner, &attacker_collabs);
+    let result = client.try_update_collaborators(&project_id, &not_owner, &attacker_collabs);
     assert_eq!(result, Err(Ok(SplitError::Unauthorized)));
 
     // And the original collaborator set must be intact.
     let project = client.get_project(&project_id).unwrap();
     assert_eq!(project.collaborators.len(), 2);
-    assert_eq!(project.collaborators.get(0u32).unwrap().basis_points, 5000u32);
-    assert_eq!(project.collaborators.get(1u32).unwrap().basis_points, 5000u32);
+    assert_eq!(
+        project.collaborators.get(0u32).unwrap().basis_points,
+        5000u32
+    );
+    assert_eq!(
+        project.collaborators.get(1u32).unwrap().basis_points,
+        5000u32
+    );
 }

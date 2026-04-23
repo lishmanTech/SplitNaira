@@ -6,7 +6,10 @@ use soroban_sdk::{
 
 mod errors;
 mod events;
-use events::{DepositReceived, DistributionComplete, MetadataUpdated, PaymentSent, ProjectCreated, ProjectLocked, UnallocatedWithdrawn};
+use events::{
+    DepositReceived, DistributionComplete, MetadataUpdated, PaymentSent, ProjectCreated,
+    ProjectLocked, UnallocatedWithdrawn,
+};
 #[cfg(test)]
 mod tests;
 
@@ -132,7 +135,9 @@ impl SplitNairaContract {
         Self::require_contract_admin(&env, &admin)?;
         admin.require_auth();
 
-        env.storage().persistent().set(&DataKey::DistributionsPaused, &true);
+        env.storage()
+            .persistent()
+            .set(&DataKey::DistributionsPaused, &true);
         Ok(())
     }
 
@@ -141,7 +146,9 @@ impl SplitNairaContract {
         Self::require_contract_admin(&env, &admin)?;
         admin.require_auth();
 
-        env.storage().persistent().set(&DataKey::DistributionsPaused, &false);
+        env.storage()
+            .persistent()
+            .set(&DataKey::DistributionsPaused, &false);
         Ok(())
     }
 
@@ -270,7 +277,11 @@ impl SplitNairaContract {
             .set(&DataKey::ProjectIds, &project_ids);
 
         // Emit creation event
-        ProjectCreated { project_id: project_id.clone(), owner: owner.clone() }.publish(&env);
+        ProjectCreated {
+            project_id: project_id.clone(),
+            owner: owner.clone(),
+        }
+        .publish(&env);
 
         Ok(())
     }
@@ -339,7 +350,10 @@ impl SplitNairaContract {
             .persistent()
             .set(&DataKey::Project(project_id.clone()), &project);
 
-        ProjectLocked { project_id: project_id.clone() }.publish(&env);
+        ProjectLocked {
+            project_id: project_id.clone(),
+        }
+        .publish(&env);
 
         Ok(())
     }
@@ -378,7 +392,13 @@ impl SplitNairaContract {
             .persistent()
             .set(&DataKey::ProjectBalance(project_id.clone()), &new_balance);
 
-        DepositReceived { project_id: project_id.clone(), from: from.clone(), amount, project_balance: new_balance }.publish(&env);
+        DepositReceived {
+            project_id: project_id.clone(),
+            from: from.clone(),
+            amount,
+            project_balance: new_balance,
+        }
+        .publish(&env);
 
         Ok(())
     }
@@ -456,7 +476,12 @@ impl SplitNairaContract {
 
                 total_sent += amount;
 
-                PaymentSent { project_id: project_id.clone(), recipient: collab.address.clone(), amount }.publish(&env);
+                PaymentSent {
+                    project_id: project_id.clone(),
+                    recipient: collab.address.clone(),
+                    amount,
+                }
+                .publish(&env);
             }
         }
 
@@ -473,7 +498,12 @@ impl SplitNairaContract {
             .set(&DataKey::Project(project_id.clone()), &project);
         Self::bump_project_ttl(&env, &project_id);
 
-        DistributionComplete { project_id: project_id.clone(), round: project.distribution_round, total: total_sent }.publish(&env);
+        DistributionComplete {
+            project_id: project_id.clone(),
+            round: project.distribution_round,
+            total: total_sent,
+        }
+        .publish(&env);
 
         Ok(())
     }
@@ -554,7 +584,6 @@ impl SplitNairaContract {
         result
     }
 
-
     /// Returns the project-scoped distributable balance.
     pub fn get_balance(env: Env, project_id: Symbol) -> Result<i128, SplitError> {
         Self::get_project_or_err(&env, &project_id)?;
@@ -604,7 +633,14 @@ impl SplitNairaContract {
         token_client.transfer(&contract_address, &to, &amount);
 
         let remaining = available - amount;
-        UnallocatedWithdrawn { token: token.clone(), admin: admin.clone(), to: to.clone(), amount, remaining_unallocated: remaining }.publish(&env);
+        UnallocatedWithdrawn {
+            token: token.clone(),
+            admin: admin.clone(),
+            to: to.clone(),
+            amount,
+            remaining_unallocated: remaining,
+        }
+        .publish(&env);
 
         Ok(())
     }
@@ -723,7 +759,10 @@ impl SplitNairaContract {
             .set(&DataKey::Project(project_id.clone()), &project);
         Self::bump_project_ttl(&env, &project_id);
 
-        MetadataUpdated { project_id: project_id.clone() }.publish(&env);
+        MetadataUpdated {
+            project_id: project_id.clone(),
+        }
+        .publish(&env);
 
         Ok(())
     }
