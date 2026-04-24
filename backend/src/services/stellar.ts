@@ -86,22 +86,6 @@ export async function executeWithRetry<T>(
   throw lastError || new RpcError("RPC operation failed after retries");
 }
 
-/**
- * Shape returned by every unsigned-transaction builder — what the client
- * receives to sign with Freighter and submit back to the network.
- */
-export interface UnsignedTxResponse {
-  xdr: string;
-  metadata: {
-    contractId: string;
-    networkPassphrase: string;
-    sourceAccount: string;
-    sequenceNumber: string;
-    fee: string;
-    operation: string;
-  };
-}
-
 let cachedConfig: StellarConfig | null = null;
 let cachedRpcServer: rpc.Server | null = null;
 

@@ -11,13 +11,10 @@ import {
   xdr
 } from "@stellar/stellar-sdk";
 
-import {
-  loadStellarConfig,
-  getStellarRpcServer,
+import { 
+  loadStellarConfig, 
+  getStellarRpcServer, 
   RequestValidationError,
-  buildUnsignedContractCall,
-  parseStellarAddress,
-  UnsignedTxResponse,
   executeWithRetry
 } from "../services/stellar.js";
 
@@ -253,6 +250,55 @@ export function decodePaymentHistoryEventValue(value: xdr.ScVal) {
 
 async function buildCreateProjectUnsignedXdr(
   input: z.infer<typeof createSplitSchema>
+) {
+  const config = loadStellarConfig();
+  const server = getStellarRpcServer();
+
+  let sourceAccount;
+  try {
+    sourceAccount = await executeWithRetry(() => server.getAccount(input.owner));
+
+  } catch {
+    throw new RequestValidationError("owner account not found on selected network");
+  }
+
+  let args: xdr.ScVal[];
+  try {
+    args = buildCreateProjectContractArgs(input);
+  } catch {
+    throw new RequestValidationError("owner/token/collaborator addresses must be valid Stellar addresses");
+  }
+
+  const contract = new Contract(config.contractId);
+
+  const tx = new TransactionBuilder(sourceAccount, {
+    fee: BASE_FEE,
+    networkPassphrase: config.networkPassphrase
+  })
+    .addOperation(
+      contract.call("create_project", ...args)
+    )
+    .setTimeout(300)
+    .build();
+
+  const preparedTx = await executeWithRetry(() => server.prepareTransaction(tx));
+
+  return {
+    round: Number(data[0]),
+    amount: String(data[1])
+  };
+}
+
+export function decodePaymentHistoryEventValue(value: xdr.ScVal) {
+  const data = scValToNative(value) as [string, string | number | bigint];
+  return {
+    recipient: data[0],
+    amount: String(data[1])
+  };
+}
+
+async function buildCreateProjectUnsignedXdr(
+  input: z.infer<typeof createSplitSchema>
 ): Promise<UnsignedTxResponse> {
   // Pre-validate addresses so we surface a clear error instead of a cryptic one
   // from inside buildCreateProjectContractArgs.
@@ -335,38 +381,47 @@ interface LockProjectRequest {
   owner: string;
 }
 
-async function buildLockProjectUnsignedXdr(
-  input: LockProjectRequest
-): Promise<UnsignedTxResponse> {
-  parseStellarAddress(input.owner, "owner address");
-  const args = buildLockProjectContractArgs(input);
+async function buildLockProjectUnsignedXdr(input: LockProjectRequest) {
+  const config = loadStellarConfig();
+  const server = new rpc.Server(config.sorobanRpcUrl, { allowHttp: true });
 
-  return buildUnsignedContractCall({
-    sourceAddress: input.owner,
-    sourceRoleLabel: "owner",
-    operation: "lock_project",
-    args
-  });
-}
+  let sourceAccount;
+  try {
+    sourceAccount = await executeWithRetry(() => server.getAccount(input.owner));
+  } catch {
+    throw new RequestValidationError("owner account not found on selected network");
+  }
 
-interface DepositRequest {
-  projectId: string;
-  from: string;
-  amount: number;
-}
+  let args: xdr.ScVal[];
+  try {
+    args = buildLockProjectContractArgs(input);
+  } catch {
+    throw new RequestValidationError("owner address must be a valid Stellar address");
+  }
 
-async function buildDepositUnsignedXdr(
-  input: DepositRequest
-): Promise<UnsignedTxResponse> {
-  parseStellarAddress(input.from, "from address");
-  const args = buildDepositContractArgs(input);
+  const contract = new Contract(config.contractId);
+  const tx = new TransactionBuilder(sourceAccount, {
+    fee: BASE_FEE,
+    networkPassphrase: config.networkPassphrase
+  })
+    .addOperation(
+      contract.call("lock_project", ...args)
+    )
+    .setTimeout(300)
+    .build();
 
-  return buildUnsignedContractCall({
-    sourceAddress: input.from,
-    sourceRoleLabel: "from",
-    operation: "deposit",
-    args
-  });
+  const preparedTx = await executeWithRetry(() => server.prepareTransaction(tx));
+  return {
+    xdr: preparedTx.toXDR(),
+    metadata: {
+      contractId: config.contractId,
+      networkPassphrase: config.networkPassphrase,
+      sourceAccount: input.owner,
+      sequenceNumber: preparedTx.sequence,
+      fee: preparedTx.fee,
+      operation: "lock_project"
+    }
+  };
 }
 
 interface UpdateCollaboratorsRequest {
@@ -375,53 +430,95 @@ interface UpdateCollaboratorsRequest {
   collaborators: Array<z.infer<typeof collaboratorSchema>>;
 }
 
-async function buildUpdateCollaboratorsUnsignedXdr(
-  input: UpdateCollaboratorsRequest
-): Promise<UnsignedTxResponse> {
-  parseStellarAddress(input.owner, "owner address");
-  const args = buildUpdateCollaboratorsContractArgs(input);
+async function buildDepositUnsignedXdr(input: DepositRequest) {
+  const config = loadStellarConfig();
+  const server = new rpc.Server(config.sorobanRpcUrl, { allowHttp: true });
 
-  return buildUnsignedContractCall({
-    sourceAddress: input.owner,
-    sourceRoleLabel: "owner",
-    operation: "update_collaborators",
-    args
-  });
+  let sourceAccount;
+  try {
+    sourceAccount = await executeWithRetry(() => server.getAccount(input.from));
+  } catch {
+    throw new RequestValidationError("from account not found on selected network");
+  }
+
+  let args: xdr.ScVal[];
+  try {
+    args = buildDepositContractArgs(input);
+  } catch {
+    throw new RequestValidationError("from address must be a valid Stellar address");
+  }
+
+  const contract = new Contract(config.contractId);
+  const tx = new TransactionBuilder(sourceAccount, {
+    fee: BASE_FEE,
+    networkPassphrase: config.networkPassphrase
+  })
+    .addOperation(
+      contract.call("deposit", ...args)
+    )
+    .setTimeout(300)
+    .build();
+
+  const preparedTx = await executeWithRetry(() => server.prepareTransaction(tx));
+  return {
+    xdr: preparedTx.toXDR(),
+    metadata: {
+      contractId: config.contractId,
+      networkPassphrase: config.networkPassphrase,
+      sourceAccount: input.from,
+      sequenceNumber: preparedTx.sequence,
+      fee: preparedTx.fee,
+      operation: "deposit"
+    }
+  };
 }
 
-interface AdminTokenRequest {
-  admin: string;
-  token: string;
-}
+async function buildUpdateMetadataUnsignedXdr(input: {
+  projectId: string;
+  owner: string;
+  title: string;
+  projectType: string;
+}) {
+  const config = loadStellarConfig();
+  const server = new rpc.Server(config.sorobanRpcUrl, { allowHttp: true });
 
-async function buildAllowTokenUnsignedXdr(
-  input: AdminTokenRequest
-): Promise<UnsignedTxResponse> {
-  parseStellarAddress(input.admin, "admin address");
-  parseStellarAddress(input.token, "token address");
-  const args = buildAdminTokenContractArgs(input);
+  let sourceAccount;
+  try {
+    sourceAccount = await executeWithRetry(() => server.getAccount(input.owner));
+  } catch {
+    throw new RequestValidationError("owner account not found on selected network");
+  }
 
-  return buildUnsignedContractCall({
-    sourceAddress: input.admin,
-    sourceRoleLabel: "admin",
-    operation: "allow_token",
-    args
-  });
-}
+  let args: xdr.ScVal[];
+  try {
+    args = buildUpdateCollaboratorsContractArgs(input);
+  } catch {
+    throw new RequestValidationError("owner/token/collaborator addresses must be valid Stellar addresses");
+  }
 
-async function buildDisallowTokenUnsignedXdr(
-  input: AdminTokenRequest
-): Promise<UnsignedTxResponse> {
-  parseStellarAddress(input.admin, "admin address");
-  parseStellarAddress(input.token, "token address");
-  const args = buildAdminTokenContractArgs(input);
+  const contract = new Contract(config.contractId);
+  const tx = new TransactionBuilder(sourceAccount, {
+    fee: BASE_FEE,
+    networkPassphrase: config.networkPassphrase
+  })
+    .addOperation(
+      contract.call("update_collaborators", ...args)
+    )
+    .setTimeout(300)
+    .build();
 
-  return buildUnsignedContractCall({
-    sourceAddress: input.admin,
-    sourceRoleLabel: "admin",
-    operation: "disallow_token",
-    args
-  });
+  const preparedTx = await executeWithRetry(() => server.prepareTransaction(tx));
+  return {
+    xdr: preparedTx.toXDR(),
+    metadata: {
+      contractId: config.contractId,
+      networkPassphrase: config.networkPassphrase,
+      sourceAccount: input.owner,
+      sequenceNumber: preparedTx.sequence,
+      fee: preparedTx.fee,
+      operation: "update_collaborators"
+    }
+  };
 }
 
 async function buildUpdateMetadataUnsignedXdr(input: {
@@ -774,23 +871,37 @@ splitsRouter.post("/:projectId/distribute", async (req: Request, res: Response, 
     const sourceAddress = parsed.data?.sourceAddress || config.simulatorAccount;
 
     try {
-      const result = await buildUnsignedContractCall({
-        sourceAddress,
-        sourceRoleLabel: "source",
-        operation: "distribute",
-        args: [nativeToScVal(projectId, { type: "symbol" })]
+      sourceAccount = await executeWithRetry(() => server.getAccount(sourceAddress));
+    } catch {
+      return res.status(400).json({
+        error: "validation_error",
+        message: "source account not found on selected network",
+        requestId
       });
-      return res.status(200).json(result);
-    } catch (error) {
-      if (error instanceof RequestValidationError) {
-        return res.status(400).json({
-          error: "validation_error",
-          message: error.message,
-          requestId
-        });
-      }
-      throw error;
     }
+
+    const contract = new Contract(config.contractId);
+    const tx = new TransactionBuilder(sourceAccount, {
+      fee: BASE_FEE,
+      networkPassphrase: config.networkPassphrase
+    })
+      .addOperation(
+        contract.call("distribute", nativeToScVal(projectId, { type: "symbol" }))
+      )
+      .setTimeout(300)
+      .build();
+
+    const preparedTx = await executeWithRetry(() => server.prepareTransaction(tx));
+
+    return res.status(200).json({
+      xdr: preparedTx.toXDR(),
+      metadata: {
+        contractId: config.contractId,
+        networkPassphrase: config.networkPassphrase,
+        sourceAccount: sourceAddress,
+        operation: "distribute"
+      }
+    });
   } catch (error) {
     return next(error);
   }
@@ -852,6 +963,153 @@ splitsRouter.get("/:projectId/claimable/:address", async (req: Request, res: Res
   }
 });
 
+const adminTokenSchema = z.object({
+  admin: stellarAddressSchema.describe("admin"),
+  token: stellarAddressSchema.describe("token")
+});
+
+interface AdminTokenRequest {
+  admin: string;
+  token: string;
+}
+
+async function buildAllowTokenUnsignedXdr(input: AdminTokenRequest) {
+  const config = loadStellarConfig();
+  const server = getStellarRpcServer();
+
+  let sourceAccount;
+  try {
+    sourceAccount = await executeWithRetry(() => server.getAccount(input.admin));
+  } catch {
+    throw new RequestValidationError("admin account not found on selected network");
+  }
+
+  const args = buildAdminTokenContractArgs(input);
+
+  const contract = new Contract(config.contractId);
+  const tx = new TransactionBuilder(sourceAccount, {
+    fee: BASE_FEE,
+    networkPassphrase: config.networkPassphrase
+  })
+    .addOperation(
+      contract.call("allow_token", ...args)
+    )
+    .setTimeout(300)
+    .build();
+
+  const preparedTx = await executeWithRetry(() => server.prepareTransaction(tx));
+  return {
+    xdr: preparedTx.toXDR(),
+    metadata: {
+      contractId: config.contractId,
+      networkPassphrase: config.networkPassphrase,
+      sourceAccount: input.admin,
+      sequenceNumber: preparedTx.sequence,
+      fee: preparedTx.fee,
+      operation: "allow_token"
+    }
+  };
+}
+
+async function buildDisallowTokenUnsignedXdr(input: AdminTokenRequest) {
+  const config = loadStellarConfig();
+  const server = getStellarRpcServer();
+
+  let sourceAccount;
+  try {
+    sourceAccount = await executeWithRetry(() => server.getAccount(input.admin));
+  } catch {
+    throw new RequestValidationError("admin account not found on selected network");
+  }
+
+  const args = buildAdminTokenContractArgs(input);
+
+  const contract = new Contract(config.contractId);
+  const tx = new TransactionBuilder(sourceAccount, {
+    fee: BASE_FEE,
+    networkPassphrase: config.networkPassphrase
+  })
+    .addOperation(
+      contract.call("disallow_token", ...args)
+    )
+    .setTimeout(300)
+    .build();
+
+  const preparedTx = await executeWithRetry(() => server.prepareTransaction(tx));
+  return {
+    xdr: preparedTx.toXDR(),
+    metadata: {
+      contractId: config.contractId,
+      networkPassphrase: config.networkPassphrase,
+      sourceAccount: input.admin,
+      sequenceNumber: preparedTx.sequence,
+      fee: preparedTx.fee,
+      operation: "disallow_token"
+    }
+  };
+}
+
+splitsRouter.post("/admin/allow-token", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const requestId = res.locals.requestId;
+    const parsed = adminTokenSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: "validation_error",
+        message: "Invalid request payload.",
+        details: parsed.error.flatten(),
+        requestId
+      });
+    }
+
+    try {
+      const result = await buildAllowTokenUnsignedXdr(parsed.data);
+      return res.status(200).json(result);
+    } catch (error) {
+      if (error instanceof RequestValidationError) {
+        return res.status(400).json({
+          error: "validation_error",
+          message: error.message,
+          requestId
+        });
+      }
+      throw error;
+    }
+  } catch (error) {
+    return next(error);
+  }
+});
+
+splitsRouter.post("/admin/disallow-token", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const requestId = res.locals.requestId;
+    const parsed = adminTokenSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: "validation_error",
+        message: "Invalid request payload.",
+        details: parsed.error.flatten(),
+        requestId
+      });
+    }
+
+    try {
+      const result = await buildDisallowTokenUnsignedXdr(parsed.data);
+      return res.status(200).json(result);
+    } catch (error) {
+      if (error instanceof RequestValidationError) {
+        return res.status(400).json({
+          error: "validation_error",
+          message: error.message,
+          requestId
+        });
+      }
+      throw error;
+    }
+  } catch (error) {
+    return next(error);
+  }
+});
 
 export const historyQuerySchema = z.object({
   cursor: z.string().default(""),
