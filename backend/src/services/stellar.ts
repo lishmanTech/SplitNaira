@@ -134,9 +134,42 @@ export function getStellarRpcServer(): rpc.Server {
 }
 
 /**
- * Fetch the Soroban account for the given address, or throw a
- * RequestValidationError with a role-specific message if it isn't found on
- * the currently configured network.
+ * Detect whether an error from `server.getAccount(...)` actually means the
+ * account doesn't exist, versus a transient RPC/network failure we should
+ * surface as a 5xx. Checks common shapes: HTTP 404 status codes, numeric
+ * `code`/`status` fields, and "not found" in the error message.
+ */
+function isAccountNotFoundError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const maybeError = error as {
+    code?: number | string;
+    status?: number;
+    message?: string;
+    response?: { status?: number };
+  };
+
+  const message = maybeError.message?.toLowerCase() ?? "";
+
+  return (
+    maybeError.code === 404 ||
+    maybeError.status === 404 ||
+    maybeError.response?.status === 404 ||
+    /not[\s_-]?found/.test(message)
+  );
+}
+
+/**
+ * Fetch the Soroban account for the given address. Only translates genuine
+ * "not found" errors into RequestValidationError (→ 400). Other errors
+ * (timeouts, RPC failures) propagate up so middleware can surface them as
+ * 5xx instead of misleading 400s.
+ *
+ * Wrapped in executeWithRetry with maxRetries: 0 to keep the timeout race
+ * without retrying — account-not-found isn't transient, and retrying would
+ * blow past Express response timeouts on invalid addresses.
  */
 export async function resolveSourceAccount(
   address: string,
@@ -144,13 +177,16 @@ export async function resolveSourceAccount(
 ) {
   const server = getStellarRpcServer();
   try {
-    // Don't retry: "account not found" isn't transient, and retrying would
-    // blow past Express response timeouts on invalid addresses.
-    return await server.getAccount(address);
-  } catch {
-    throw new RequestValidationError(
-      `${roleLabel} account not found on selected network`
-    );
+    return await executeWithRetry(() => server.getAccount(address), {
+      maxRetries: 0
+    });
+  } catch (error) {
+    if (isAccountNotFoundError(error)) {
+      throw new RequestValidationError(
+        `${roleLabel} account not found on selected network`
+      );
+    }
+    throw error;
   }
 }
 
