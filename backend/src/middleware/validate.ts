@@ -35,7 +35,7 @@ export function validateRequest(schemas: ValidationSchemas): RequestHandler {
           error: "VALIDATION_ERROR",
           message: "Invalid request payload",
           requestId,
-          details: buildValidationDetails(error),
+          details: buildValidationDetails(error)
         });
       }
       next(error);

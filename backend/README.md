@@ -27,13 +27,17 @@ The API documentation is defined using Zod schemas and generated into an OpenAPI
 ## Deployment
 - CI/CD workflow: `../.github/workflows/backend-deploy.yml`
 - Deployment configuration and required secrets: [`../docs/backend-deploy.md`](../docs/backend-deploy.md)
-- **Performance (Wave 5):** [`../docs/backend-performance-wave5.md`](../docs/backend-performance-wave5.md) — read cache, DB pool tuning, RPC retries, rollback notes
+- **Release Operations (Wave 5)**: [`../docs/backend-release-ops-wave5.md`](../docs/backend-release-ops-wave5.md) — deployment checklist, rollback notes, and local CI steps.
 
-## Performance
+## Release operations & production readiness
 
-- **Bounded read cache** — Soroban read simulations cached with TTL and max entry count (`READ_CACHE_TTL_MS`, `READ_CACHE_MAX_ENTRIES`)
-- **Postgres pool** — connection cap via `DATABASE_POOL_MAX` (default 10)
-- **RPC retries** — exponential backoff on transient Soroban errors
+- **Database transaction safety** — user registration runs inside `withTransaction()` with automatic rollback
+- **Structured logging** — critical paths use Winston with `requestId`
+- **Input validation** — `validateRequest` middleware returns consistent 400 payloads
+- **Error handling** — centralized `AppError` mapping and RPC retry policy
+- **Rate limiting** — layered limits on all route groups
+
+See [`../docs/backend-release-ops-wave5.md`](../docs/backend-release-ops-wave5.md) for the implementation plan, deploy/rollback runbook, and CI commands.
 
 ## Structure
 - `src/index.ts` - App entry

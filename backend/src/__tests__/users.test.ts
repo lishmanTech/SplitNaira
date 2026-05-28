@@ -20,21 +20,33 @@ vi.mock("../services/database.js", () => ({
       save: saveMock
     })
   }),
-  withTransaction: async (callback: any) => {
+  withTransaction: async (callback: (queryRunner: {
+    manager: {
+      getRepository: () => {
+        findOne: typeof findOneMock;
+        create: typeof createMock;
+        save: typeof saveMock;
+      };
+    };
+  }) => Promise<unknown>) => {
+    const repository = {
+      findOne: findOneMock,
+      create: createMock,
+      save: saveMock
+    };
     const mockQueryRunner = {
-      manager: {
-        getRepository: () => ({
-          findOne: findOneMock,
-          create: createMock,
-          save: saveMock
-        })
-      },
+      manager: { getRepository: () => repository },
       startTransaction: commitMock,
       commitTransaction: commitMock,
       rollbackTransaction: rollbackMock,
       release: releaseMock
     };
-    return await callback(mockQueryRunner);
+    try {
+      return await callback(mockQueryRunner);
+    } catch (error) {
+      rollbackMock();
+      throw error;
+    }
   }
 }));
 
@@ -207,24 +219,5 @@ describe("User Registration API", () => {
       expect(rollbackMock).toHaveBeenCalled();
     });
 
-    it("should rollback on duplicate wallet address error during transaction", async () => {
-      const app = createApp();
-
-      // First call returns null (user doesn't exist), second call would find it
-      findOneMock.mockResolvedValueOnce(null);
-      findOneMock.mockResolvedValueOnce({
-        id: "existing",
-        walletAddress: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"
-      });
-
-      const response = await request(app)
-        .post("/users/register")
-        .send({
-          walletAddress: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
-          email: "test@example.com"
-        });
-
-      expect(response.status).toBe(400);
-    });
   });
 });

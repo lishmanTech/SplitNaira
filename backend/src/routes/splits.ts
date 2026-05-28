@@ -49,13 +49,13 @@ function sendValidationError(
   res: Response,
   requestId: string,
   message: string,
-  details: Record<string, unknown> = {},
+  details: Record<string, unknown> = {}
 ) {
   return res.status(400).json({
     error: "validation_error",
     message,
     requestId,
-    details,
+    details
   });
 }
 
@@ -64,7 +64,7 @@ function sendRpcError(res: Response, requestId: string, message: string, status 
     error: "rpc_error",
     message,
     requestId,
-    details: {},
+    details: {}
   });
 }
 
@@ -883,7 +883,10 @@ splitsRouter.post("/:projectId/deposit", async (req, res, next) => {
     const parsedBody = depositSchema.safeParse(req.body);
 
     if (!parsedParams.success || !parsedBody.success) {
-      return sendValidationError(res, requestId, "Invalid request payload.", { params: parsedParams.success ? null : parsedParams.error.flatten(), body: parsedBody.success ? null : parsedBody.error.flatten() });
+      return sendValidationError(res, requestId, "Invalid request payload.", {
+        params: parsedParams.success ? null : parsedParams.error.flatten(),
+        body: parsedBody.success ? null : parsedBody.error.flatten()
+      });
     }
 
     try {
@@ -915,7 +918,10 @@ splitsRouter.patch("/:projectId/metadata", async (req, res, next) => {
     const parsedBody = updateMetadataSchema.safeParse(req.body);
 
     if (!parsedParams.success || !parsedBody.success) {
-      return sendValidationError(res, requestId, "Invalid request payload.", { params: parsedParams.success ? null : parsedParams.error.flatten(), body: parsedBody.success ? null : parsedBody.error.flatten() });
+      return sendValidationError(res, requestId, "Invalid request payload.", {
+        params: parsedParams.success ? null : parsedParams.error.flatten(),
+        body: parsedBody.success ? null : parsedBody.error.flatten()
+      });
     }
 
     try {
@@ -945,7 +951,10 @@ splitsRouter.put("/:projectId/collaborators", async (req, res, next) => {
     const parsedBody = updateCollaboratorsSchema.safeParse(req.body);
 
     if (!parsedParams.success || !parsedBody.success) {
-      return sendValidationError(res, requestId, "Invalid request payload.", { params: parsedParams.success ? null : parsedParams.error.flatten(), body: parsedBody.success ? null : parsedBody.error.flatten() });
+      return sendValidationError(res, requestId, "Invalid request payload.", {
+        params: parsedParams.success ? null : parsedParams.error.flatten(),
+        body: parsedBody.success ? null : parsedBody.error.flatten()
+      });
     }
 
     try {
@@ -1058,7 +1067,12 @@ splitsRouter.get("/:projectId/claimable/:address", async (req: Request, res: Res
     const parsedAddress = stellarAddressSchema.safeParse(req.params.address);
 
     if (!parsedProjectId.success || !parsedAddress.success) {
-      return sendValidationError(res, requestId, "Invalid request payload.", { params: { projectId: parsedProjectId.success ? null : parsedProjectId.error.flatten(), address: parsedAddress.success ? null : parsedAddress.error.flatten() } });
+      return sendValidationError(res, requestId, "Invalid request payload.", {
+        params: {
+          projectId: parsedProjectId.success ? null : parsedProjectId.error.flatten(),
+          address: parsedAddress.success ? null : parsedAddress.error.flatten()
+        }
+      });
     }
 
     const projectId = parsedProjectId.data;
