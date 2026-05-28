@@ -815,11 +815,11 @@ splitsRouter.get("/admin/allowlist", async (req: Request, res: Response, next: N
     const requestId = res.locals.requestId;
     const parsed = allowlistQuerySchema.safeParse(req.query);
     if (!parsed.success) {
-      return res.status(400).json({
-        error: "validation_error",
-        message: "Invalid query parameters.",
-        details: parsed.error.flatten(),
-        requestId
+      return res.status().json({
+        error: ,
+        message: ,
+        requestId,
+        details: 
       });
     }
 
@@ -844,11 +844,12 @@ splitsRouter.get("/admin/allowlist", async (req: Request, res: Response, next: N
       );
     } catch (error) {
       if (error instanceof RequestValidationError) {
-        return res.status(400).json({
-          error: "validation_error",
-          message: error.message,
-          requestId
-        });
+        return res.status().json({
+        error: ,
+        message: ,
+        requestId,
+        details: {}
+      });
       }
       throw error;
     }
@@ -872,8 +873,8 @@ splitsRouter.post("/:projectId/deposit", async (req, res, next) => {
           params: parsedParams.success ? null : parsedParams.error.flatten(),
           body: parsedBody.success ? null : parsedBody.error.flatten()
         },
-        requestId
-      });
+        requestId,
+        details: {}});
     }
 
     try {
@@ -888,11 +889,12 @@ splitsRouter.post("/:projectId/deposit", async (req, res, next) => {
       return res.status(200).json(result);
     } catch (error) {
       if (error instanceof RequestValidationError) {
-        return res.status(400).json({
-          error: "validation_error",
-          message: error.message,
-          requestId
-        });
+        return res.status().json({
+        error: ,
+        message: ,
+        requestId,
+        details: {}
+      });
       }
       throw error;
     }
@@ -916,8 +918,8 @@ splitsRouter.patch("/:projectId/metadata", async (req, res, next) => {
           params: parsedParams.success ? null : parsedParams.error.flatten(),
           body: parsedBody.success ? null : parsedBody.error.flatten()
         },
-        requestId
-      });
+        requestId,
+        details: {}});
     }
 
     try {
@@ -930,11 +932,12 @@ splitsRouter.patch("/:projectId/metadata", async (req, res, next) => {
       return res.status(200).json(result);
     } catch (error) {
       if (error instanceof RequestValidationError) {
-        return res.status(400).json({
-          error: "validation_error",
-          message: error.message,
-          requestId
-        });
+        return res.status().json({
+        error: ,
+        message: ,
+        requestId,
+        details: {}
+      });
       }
       throw error;
     }
@@ -958,8 +961,8 @@ splitsRouter.put("/:projectId/collaborators", async (req, res, next) => {
           params: parsedParams.success ? null : parsedParams.error.flatten(),
           body: parsedBody.success ? null : parsedBody.error.flatten()
         },
-        requestId
-      });
+        requestId,
+        details: {}});
     }
 
     try {
@@ -971,11 +974,12 @@ splitsRouter.put("/:projectId/collaborators", async (req, res, next) => {
       return res.status(200).json(result);
     } catch (error) {
       if (error instanceof RequestValidationError) {
-        return res.status(400).json({
-          error: "validation_error",
-          message: error.message,
-          requestId
-        });
+        return res.status().json({
+        error: ,
+        message: ,
+        requestId,
+        details: {}
+      });
       }
       throw error;
     }
@@ -989,11 +993,11 @@ splitsRouter.post("/", async (req, res, next) => {
     const requestId = res.locals.requestId;
     const parsed = createSplitSchema.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({
-        error: "validation_error",
-        message: "Invalid request payload.",
-        details: parsed.error.flatten(),
-        requestId
+      return res.status().json({
+        error: ,
+        message: ,
+        requestId,
+        details: 
       });
     }
 
@@ -1004,11 +1008,12 @@ splitsRouter.post("/", async (req, res, next) => {
       return res.status(200).json(result);
     } catch (error) {
       if (error instanceof RequestValidationError) {
-        return res.status(400).json({
-          error: "validation_error",
-          message: error.message,
-          requestId
-        });
+        return res.status().json({
+        error: ,
+        message: ,
+        requestId,
+        details: {}
+      });
       }
       throw error;
     }
@@ -1094,8 +1099,8 @@ splitsRouter.get("/:projectId/claimable/:address", async (req: Request, res: Res
             address: parsedAddress.success ? null : parsedAddress.error.flatten()
           }
         },
-        requestId
-      });
+        requestId,
+        details: {}});
     }
 
     const projectId = parsedProjectId.data;
@@ -1107,10 +1112,11 @@ splitsRouter.get("/:projectId/claimable/:address", async (req: Request, res: Res
     try {
       sourceAccount = await executeWithRetry(() => server.getAccount(config.simulatorAccount));
     } catch {
-      return res.status(500).json({
-        error: "server_error",
-        message: "simulator account not found",
-        requestId
+      return res.status().json({
+        error: ,
+        message: ,
+        requestId,
+        details: {}
       });
     }
 
@@ -1138,10 +1144,11 @@ splitsRouter.get("/:projectId/claimable/:address", async (req: Request, res: Res
 
     const retval = "result" in simulated ? simulated.result?.retval : undefined;
     if (!retval) {
-      return res.status(404).json({
-        error: "not_found",
-        message: `Split project ${projectId} not found`,
-        requestId
+      return res.status().json({
+        error: ,
+        message: ,
+        requestId,
+        details: {}
       });
     }
 
@@ -1278,11 +1285,11 @@ splitsRouter.post("/admin/allow-token", async (req: Request, res: Response, next
     const requestId = res.locals.requestId;
     const parsed = adminTokenSchema.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({
-        error: "validation_error",
-        message: "Invalid request payload.",
-        details: parsed.error.flatten(),
-        requestId
+      return res.status().json({
+        error: ,
+        message: ,
+        requestId,
+        details: 
       });
     }
 
@@ -1291,11 +1298,12 @@ splitsRouter.post("/admin/allow-token", async (req: Request, res: Response, next
       return res.status(200).json(result);
     } catch (error) {
       if (error instanceof RequestValidationError) {
-        return res.status(400).json({
-          error: "validation_error",
-          message: error.message,
-          requestId
-        });
+        return res.status().json({
+        error: ,
+        message: ,
+        requestId,
+        details: {}
+      });
       }
       throw error;
     }
@@ -1309,11 +1317,11 @@ splitsRouter.post("/admin/disallow-token", async (req: Request, res: Response, n
     const requestId = res.locals.requestId;
     const parsed = adminTokenSchema.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({
-        error: "validation_error",
-        message: "Invalid request payload.",
-        details: parsed.error.flatten(),
-        requestId
+      return res.status().json({
+        error: ,
+        message: ,
+        requestId,
+        details: 
       });
     }
 
@@ -1322,11 +1330,12 @@ splitsRouter.post("/admin/disallow-token", async (req: Request, res: Response, n
       return res.status(200).json(result);
     } catch (error) {
       if (error instanceof RequestValidationError) {
-        return res.status(400).json({
-          error: "validation_error",
-          message: error.message,
-          requestId
-        });
+        return res.status().json({
+        error: ,
+        message: ,
+        requestId,
+        details: {}
+      });
       }
       throw error;
     }
@@ -1340,11 +1349,11 @@ splitsRouter.post("/admin/pause-distributions", async (req: Request, res: Respon
     const requestId = res.locals.requestId;
     const parsed = pauseDistributionsSchema.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({
-        error: "validation_error",
-        message: "Invalid request payload.",
-        details: parsed.error.flatten(),
-        requestId
+      return res.status().json({
+        error: ,
+        message: ,
+        requestId,
+        details: 
       });
     }
 
@@ -1353,11 +1362,12 @@ splitsRouter.post("/admin/pause-distributions", async (req: Request, res: Respon
       return res.status(200).json(result);
     } catch (error) {
       if (error instanceof RequestValidationError) {
-        return res.status(400).json({
-          error: "validation_error",
-          message: error.message,
-          requestId
-        });
+        return res.status().json({
+        error: ,
+        message: ,
+        requestId,
+        details: {}
+      });
       }
       throw error;
     }
@@ -1371,11 +1381,11 @@ splitsRouter.post("/admin/unpause-distributions", async (req: Request, res: Resp
     const requestId = res.locals.requestId;
     const parsed = pauseDistributionsSchema.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({
-        error: "validation_error",
-        message: "Invalid request payload.",
-        details: parsed.error.flatten(),
-        requestId
+      return res.status().json({
+        error: ,
+        message: ,
+        requestId,
+        details: 
       });
     }
 
@@ -1384,11 +1394,12 @@ splitsRouter.post("/admin/unpause-distributions", async (req: Request, res: Resp
       return res.status(200).json(result);
     } catch (error) {
       if (error instanceof RequestValidationError) {
-        return res.status(400).json({
-          error: "validation_error",
-          message: error.message,
-          requestId
-        });
+        return res.status().json({
+        error: ,
+        message: ,
+        requestId,
+        details: {}
+      });
       }
       throw error;
     }
@@ -1518,7 +1529,7 @@ splitsRouter.get("/admin/status", async (req: Request, res: Response, next: Next
       return res.status(200).json({ admin, isPaused });
     } catch (error) {
       if (error instanceof RequestValidationError) {
-        return res.status(400).json({ error: "validation_error", message: error.message, requestId });
+        return res.status(400).json({ error: "validation_error", message: error.message, requestId, details: {} });
       }
       throw error;
     }
@@ -1536,11 +1547,11 @@ splitsRouter.get("/admin/is-token-allowed", async (req: Request, res: Response, 
     const requestId = res.locals.requestId;
     const parsed = isTokenAllowedQuerySchema.safeParse(req.query);
     if (!parsed.success) {
-      return res.status(400).json({
-        error: "validation_error",
-        message: "Invalid query parameters.",
-        details: parsed.error.flatten(),
-        requestId
+      return res.status().json({
+        error: ,
+        message: ,
+        requestId,
+        details: 
       });
     }
     const { token } = parsed.data;
@@ -1553,7 +1564,7 @@ splitsRouter.get("/admin/is-token-allowed", async (req: Request, res: Response, 
       return res.status(200).json({ token, isAllowed });
     } catch (error) {
       if (error instanceof RequestValidationError) {
-        return res.status(400).json({ error: "validation_error", message: error.message, requestId });
+        return res.status(400).json({ error: "validation_error", message: error.message, requestId, details: {} });
       }
       throw error;
     }
@@ -1571,7 +1582,7 @@ splitsRouter.get("/admin/token-count", async (req: Request, res: Response, next:
       return res.status(200).json({ count });
     } catch (error) {
       if (error instanceof RequestValidationError) {
-        return res.status(400).json({ error: "validation_error", message: error.message, requestId });
+        return res.status(400).json({ error: "validation_error", message: error.message, requestId, details: {} });
       }
       throw error;
     }
@@ -1593,11 +1604,11 @@ splitsRouter.get("/admin/unallocated", async (req: Request, res: Response, next:
     const requestId = res.locals.requestId;
     const parsed = unallocatedQuerySchema.safeParse(req.query);
     if (!parsed.success) {
-      return res.status(400).json({
-        error: "validation_error",
-        message: "Invalid query parameters.",
-        details: parsed.error.flatten(),
-        requestId
+      return res.status().json({
+        error: ,
+        message: ,
+        requestId,
+        details: 
       });
     }
     const { token } = parsed.data;
@@ -1610,7 +1621,7 @@ splitsRouter.get("/admin/unallocated", async (req: Request, res: Response, next:
       return res.status(200).json({ token, unallocated });
     } catch (error) {
       if (error instanceof RequestValidationError) {
-        return res.status(400).json({ error: "validation_error", message: error.message, requestId });
+        return res.status(400).json({ error: "validation_error", message: error.message, requestId, details: {} });
       }
       throw error;
     }
@@ -1688,11 +1699,11 @@ splitsRouter.post("/admin/withdraw-unallocated", async (req: Request, res: Respo
     const requestId = res.locals.requestId;
     const parsed = withdrawUnallocatedSchema.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({
-        error: "validation_error",
-        message: "Invalid request payload.",
-        details: parsed.error.flatten(),
-        requestId
+      return res.status().json({
+        error: ,
+        message: ,
+        requestId,
+        details: 
       });
     }
 
@@ -1701,7 +1712,7 @@ splitsRouter.post("/admin/withdraw-unallocated", async (req: Request, res: Respo
       return res.status(200).json(result);
     } catch (error) {
       if (error instanceof RequestValidationError) {
-        return res.status(400).json({ error: "validation_error", message: error.message, requestId });
+        return res.status(400).json({ error: "validation_error", message: error.message, requestId, details: {} });
       }
       throw error;
     }

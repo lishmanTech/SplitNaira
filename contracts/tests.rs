@@ -539,6 +539,115 @@ fn test_lock_project_success() {
 }
 
 // ============================================================
+//  DEPOSIT TESTS (ISSUE #249)
+// ============================================================
+
+#[test]
+fn test_deposit_success() {
+    let (env, _admin, token) = create_test_env();
+    let contract_id = env.register_contract(None, SplitNairaContract);
+    let client = SplitNairaContractClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let funder = Address::generate(&env);
+    let alice = Address::generate(&env);
+    let bob = Address::generate(&env);
+
+    let collabs = make_collaborators(
+        &env,
+        Vec::from_slice(&env, &[alice.clone(), bob.clone()]),
+        Vec::from_slice(&env, &[5000u32, 5000u32]),
+    );
+
+    let project_id = Symbol::new(&env, "test_deposit_success");
+    client.create_project(
+        &owner,
+        &project_id,
+        &String::from_str(&env, "Deposit Project"),
+        &String::from_str(&env, "music"),
+        &token,
+        &collabs,
+    );
+
+    deposit_to_project(&env, &client, &token, &project_id, &funder, 1_000_0000000i128);
+
+    assert_eq!(client.get_balance(&project_id), 1_000_0000000i128);
+}
+
+#[test]
+fn test_deposit_rejects_zero_amount() {
+    let (env, _admin, token) = create_test_env();
+    let contract_id = env.register_contract(None, SplitNairaContract);
+    let client = SplitNairaContractClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let funder = Address::generate(&env);
+    let alice = Address::generate(&env);
+    let bob = Address::generate(&env);
+
+    let collabs = make_collaborators(
+        &env,
+        Vec::from_slice(&env, &[alice.clone(), bob.clone()]),
+        Vec::from_slice(&env, &[5000u32, 5000u32]),
+    );
+
+    let project_id = Symbol::new(&env, "test_zero_deposit");
+    client.create_project(
+        &owner,
+        &project_id,
+        &String::from_str(&env, "Zero Deposit Project"),
+        &String::from_str(&env, "music"),
+        &token,
+        &collabs,
+    );
+
+    let token_client = token::StellarAssetClient::new(&env, &token);
+    token_client.mint(&funder, &1_000_0000000i128);
+
+    let result = client.try_deposit(&project_id, &funder, &0i128);
+    assert_eq!(result, Err(Ok(SplitError::InvalidAmount)));
+    assert_eq!(client.get_balance(&project_id), 0i128);
+}
+
+#[test]
+fn test_multiple_sequential_deposits() {
+    let (env, _admin, token) = create_test_env();
+    let contract_id = env.register_contract(None, SplitNairaContract);
+    let client = SplitNairaContractClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let funder1 = Address::generate(&env);
+    let funder2 = Address::generate(&env);
+    let alice = Address::generate(&env);
+    let bob = Address::generate(&env);
+
+    let collabs = make_collaborators(
+        &env,
+        Vec::from_slice(&env, &[alice.clone(), bob.clone()]),
+        Vec::from_slice(&env, &[5000u32, 5000u32]),
+    );
+
+    let project_id = Symbol::new(&env, "test_multi_deposit");
+    client.create_project(
+        &owner,
+        &project_id,
+        &String::from_str(&env, "Multi Deposit Project"),
+        &String::from_str(&env, "music"),
+        &token,
+        &collabs,
+    );
+
+    deposit_to_project(&env, &client, &token, &project_id, &funder1, 100_0000000i128);
+    assert_eq!(client.get_balance(&project_id), 100_0000000i128);
+
+    deposit_to_project(&env, &client, &token, &project_id, &funder2, 250_0000000i128);
+    assert_eq!(client.get_balance(&project_id), 350_0000000i128);
+
+    deposit_to_project(&env, &client, &token, &project_id, &funder1, 50_0000000i128);
+    assert_eq!(client.get_balance(&project_id), 400_0000000i128);
+}
+
+// ============================================================
 //  DEPOSIT + DISTRIBUTION TESTS
 // ============================================================
 

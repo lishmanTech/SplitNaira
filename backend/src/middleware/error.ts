@@ -6,10 +6,9 @@ import { RpcError } from "../services/stellar.js";
 export function notFoundHandler(_req: Request, res: Response) {
   res.status(404).json({
     error: "not_found",
-    code: ErrorCode.NOT_FOUND,
-    type: ErrorType.RPC,
     message: "Route not found.",
-    requestId: res.locals.requestId
+    requestId: res.locals.requestId,
+    details: {}
   });
 }
 
@@ -44,11 +43,9 @@ export function errorHandler(
 
     return res.status(status).json({
       error: err.code.toLowerCase(),
-      code: err.code,
-      type: err.type,
       message: err.message,
-      remediation: err.remediation,
-      requestId
+      requestId,
+      details: err.details || { remediation: err.remediation }
     });
   }
 
@@ -59,15 +56,15 @@ export function errorHandler(
     return res.status(err.statusCode).json({
       error: "rpc_error",
       message: err.message,
-      requestId
+      requestId,
+      details: {}
     });
   }
 
   res.status(500).json({
     error: "internal_error",
-    code: ErrorCode.INTERNAL_ERROR,
-    type: ErrorType.INTERNAL,
     message: err.message || "Unexpected server error.",
-    requestId
+    requestId,
+    details: {}
   });
 }

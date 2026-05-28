@@ -51,8 +51,8 @@ healthRouter.get("/ready", async (_req, res, next) => {
       message: "Required environment variables are missing or malformed.",
       components,
       issues: envDiagnostics.issues,
-      requestId
-    });
+      requestId,
+        details: {}});
     return;
   }
 
@@ -70,8 +70,8 @@ healthRouter.get("/ready", async (_req, res, next) => {
       error: "database_unavailable",
       message: "Database connection is not available.",
       components,
-      requestId
-    });
+      requestId,
+        details: {}});
     return;
   }
 
@@ -89,8 +89,8 @@ healthRouter.get("/ready", async (_req, res, next) => {
         error: !soroban.rpc.ok ? "rpc_unavailable" : "contract_unreachable",
         message: "Soroban RPC or contract simulation is not ready.",
         components,
-        requestId
-      });
+        requestId,
+        details: {}});
       return;
     }
   } catch (error) {
