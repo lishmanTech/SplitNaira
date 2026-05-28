@@ -252,10 +252,8 @@ describe("splits routes integration", () => {
 
     expect(response.body).toEqual({
       admin: "GADMIN",
-      allowedTokenCount: 2,
+      count: 2,
       tokens: ["GTOKEN_1", "GTOKEN_2"],
-      start: 0,
-      limit: 25,
     });
 
     expect(getAccountMock).toHaveBeenCalledWith("GTESTSIMULATOR");

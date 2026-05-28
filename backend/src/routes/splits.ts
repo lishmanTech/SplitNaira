@@ -45,6 +45,29 @@ function serializeBigInts(obj: unknown): unknown {
   return obj;
 }
 
+function sendValidationError(
+  res: Response,
+  requestId: string,
+  message: string,
+  details: Record<string, unknown> = {}
+) {
+  return res.status(400).json({
+    error: "validation_error",
+    message,
+    requestId,
+    details
+  });
+}
+
+function sendRpcError(res: Response, requestId: string, message: string, status = 502) {
+  return res.status(status).json({
+    error: "rpc_error",
+    message,
+    requestId,
+    details: {}
+  });
+}
+
 export const splitsRouter = Router();
 
 // Strict Stellar address validator used across schemas
@@ -456,16 +479,20 @@ async function listProjects(
   let filtered: unknown[] = allProjects;
   if (search) {
     const q = search.toLowerCase();
-    filtered = filtered.filter((p: Record<string, unknown>) =>
-      String(p.title ?? "").toLowerCase().includes(q) ||
-      String(p.projectId ?? "").toLowerCase().includes(q)
-    );
+    filtered = filtered.filter((p) => {
+      const row = p as Record<string, unknown>;
+      return (
+        String(row.title ?? "").toLowerCase().includes(q) ||
+        String(row.projectId ?? "").toLowerCase().includes(q)
+      );
+    });
   }
   if (type) {
     const t = type.toLowerCase();
-    filtered = filtered.filter((p: Record<string, unknown>) =>
-      String(p.projectType ?? "").toLowerCase() === t
-    );
+    filtered = filtered.filter((p) => {
+      const row = p as Record<string, unknown>;
+      return String(row.projectType ?? "").toLowerCase() === t;
+    });
   }
 
   return filtered.slice(start, start + limit);
@@ -815,12 +842,7 @@ splitsRouter.get("/admin/allowlist", async (req: Request, res: Response, next: N
     const requestId = res.locals.requestId;
     const parsed = allowlistQuerySchema.safeParse(req.query);
     if (!parsed.success) {
-      return res.status().json({
-        error: ,
-        message: ,
-        requestId,
-        details: 
-      });
+      return sendValidationError(res, requestId, "Invalid request payload.", parsed.error.flatten());
     }
 
     const { start, limit } = parsed.data;
@@ -844,12 +866,7 @@ splitsRouter.get("/admin/allowlist", async (req: Request, res: Response, next: N
       );
     } catch (error) {
       if (error instanceof RequestValidationError) {
-        return res.status().json({
-        error: ,
-        message: ,
-        requestId,
-        details: {}
-      });
+        return sendValidationError(res, requestId, error.message);
       }
       throw error;
     }
@@ -866,15 +883,10 @@ splitsRouter.post("/:projectId/deposit", async (req, res, next) => {
     const parsedBody = depositSchema.safeParse(req.body);
 
     if (!parsedParams.success || !parsedBody.success) {
-      return res.status(400).json({
-        error: "validation_error",
-        message: "Invalid request payload.",
-        details: {
-          params: parsedParams.success ? null : parsedParams.error.flatten(),
-          body: parsedBody.success ? null : parsedBody.error.flatten()
-        },
-        requestId,
-        details: {}});
+      return sendValidationError(res, requestId, "Invalid request payload.", {
+        params: parsedParams.success ? null : parsedParams.error.flatten(),
+        body: parsedBody.success ? null : parsedBody.error.flatten()
+      });
     }
 
     try {
@@ -889,12 +901,7 @@ splitsRouter.post("/:projectId/deposit", async (req, res, next) => {
       return res.status(200).json(result);
     } catch (error) {
       if (error instanceof RequestValidationError) {
-        return res.status().json({
-        error: ,
-        message: ,
-        requestId,
-        details: {}
-      });
+        return sendValidationError(res, requestId, error.message);
       }
       throw error;
     }
@@ -911,15 +918,10 @@ splitsRouter.patch("/:projectId/metadata", async (req, res, next) => {
     const parsedBody = updateMetadataSchema.safeParse(req.body);
 
     if (!parsedParams.success || !parsedBody.success) {
-      return res.status(400).json({
-        error: "validation_error",
-        message: "Invalid request payload.",
-        details: {
-          params: parsedParams.success ? null : parsedParams.error.flatten(),
-          body: parsedBody.success ? null : parsedBody.error.flatten()
-        },
-        requestId,
-        details: {}});
+      return sendValidationError(res, requestId, "Invalid request payload.", {
+        params: parsedParams.success ? null : parsedParams.error.flatten(),
+        body: parsedBody.success ? null : parsedBody.error.flatten()
+      });
     }
 
     try {
@@ -932,12 +934,7 @@ splitsRouter.patch("/:projectId/metadata", async (req, res, next) => {
       return res.status(200).json(result);
     } catch (error) {
       if (error instanceof RequestValidationError) {
-        return res.status().json({
-        error: ,
-        message: ,
-        requestId,
-        details: {}
-      });
+        return sendValidationError(res, requestId, error.message);
       }
       throw error;
     }
@@ -954,15 +951,10 @@ splitsRouter.put("/:projectId/collaborators", async (req, res, next) => {
     const parsedBody = updateCollaboratorsSchema.safeParse(req.body);
 
     if (!parsedParams.success || !parsedBody.success) {
-      return res.status(400).json({
-        error: "validation_error",
-        message: "Invalid request payload.",
-        details: {
-          params: parsedParams.success ? null : parsedParams.error.flatten(),
-          body: parsedBody.success ? null : parsedBody.error.flatten()
-        },
-        requestId,
-        details: {}});
+      return sendValidationError(res, requestId, "Invalid request payload.", {
+        params: parsedParams.success ? null : parsedParams.error.flatten(),
+        body: parsedBody.success ? null : parsedBody.error.flatten()
+      });
     }
 
     try {
@@ -974,12 +966,7 @@ splitsRouter.put("/:projectId/collaborators", async (req, res, next) => {
       return res.status(200).json(result);
     } catch (error) {
       if (error instanceof RequestValidationError) {
-        return res.status().json({
-        error: ,
-        message: ,
-        requestId,
-        details: {}
-      });
+        return sendValidationError(res, requestId, error.message);
       }
       throw error;
     }
@@ -993,12 +980,7 @@ splitsRouter.post("/", async (req, res, next) => {
     const requestId = res.locals.requestId;
     const parsed = createSplitSchema.safeParse(req.body);
     if (!parsed.success) {
-      return res.status().json({
-        error: ,
-        message: ,
-        requestId,
-        details: 
-      });
+      return sendValidationError(res, requestId, "Invalid request payload.", parsed.error.flatten());
     }
 
     try {
@@ -1008,12 +990,7 @@ splitsRouter.post("/", async (req, res, next) => {
       return res.status(200).json(result);
     } catch (error) {
       if (error instanceof RequestValidationError) {
-        return res.status().json({
-        error: ,
-        message: ,
-        requestId,
-        details: {}
-      });
+        return sendValidationError(res, requestId, error.message);
       }
       throw error;
     }
@@ -1090,17 +1067,12 @@ splitsRouter.get("/:projectId/claimable/:address", async (req: Request, res: Res
     const parsedAddress = stellarAddressSchema.safeParse(req.params.address);
 
     if (!parsedProjectId.success || !parsedAddress.success) {
-      return res.status(400).json({
-        error: "validation_error",
-        message: "Invalid request payload.",
-        details: {
-          params: {
-            projectId: parsedProjectId.success ? null : parsedProjectId.error.flatten(),
-            address: parsedAddress.success ? null : parsedAddress.error.flatten()
-          }
-        },
-        requestId,
-        details: {}});
+      return sendValidationError(res, requestId, "Invalid request payload.", {
+        params: {
+          projectId: parsedProjectId.success ? null : parsedProjectId.error.flatten(),
+          address: parsedAddress.success ? null : parsedAddress.error.flatten()
+        }
+      });
     }
 
     const projectId = parsedProjectId.data;
@@ -1112,12 +1084,7 @@ splitsRouter.get("/:projectId/claimable/:address", async (req: Request, res: Res
     try {
       sourceAccount = await executeWithRetry(() => server.getAccount(config.simulatorAccount));
     } catch {
-      return res.status().json({
-        error: ,
-        message: ,
-        requestId,
-        details: {}
-      });
+      return sendRpcError(res, requestId, "RPC operation failed.");
     }
 
     let simulated;
@@ -1144,12 +1111,7 @@ splitsRouter.get("/:projectId/claimable/:address", async (req: Request, res: Res
 
     const retval = "result" in simulated ? simulated.result?.retval : undefined;
     if (!retval) {
-      return res.status().json({
-        error: ,
-        message: ,
-        requestId,
-        details: {}
-      });
+      return sendRpcError(res, requestId, "RPC operation failed.");
     }
 
     return res.status(200).json({
@@ -1285,12 +1247,7 @@ splitsRouter.post("/admin/allow-token", async (req: Request, res: Response, next
     const requestId = res.locals.requestId;
     const parsed = adminTokenSchema.safeParse(req.body);
     if (!parsed.success) {
-      return res.status().json({
-        error: ,
-        message: ,
-        requestId,
-        details: 
-      });
+      return sendValidationError(res, requestId, "Invalid request payload.", parsed.error.flatten());
     }
 
     try {
@@ -1298,12 +1255,7 @@ splitsRouter.post("/admin/allow-token", async (req: Request, res: Response, next
       return res.status(200).json(result);
     } catch (error) {
       if (error instanceof RequestValidationError) {
-        return res.status().json({
-        error: ,
-        message: ,
-        requestId,
-        details: {}
-      });
+        return sendValidationError(res, requestId, error.message);
       }
       throw error;
     }
@@ -1317,12 +1269,7 @@ splitsRouter.post("/admin/disallow-token", async (req: Request, res: Response, n
     const requestId = res.locals.requestId;
     const parsed = adminTokenSchema.safeParse(req.body);
     if (!parsed.success) {
-      return res.status().json({
-        error: ,
-        message: ,
-        requestId,
-        details: 
-      });
+      return sendValidationError(res, requestId, "Invalid request payload.", parsed.error.flatten());
     }
 
     try {
@@ -1330,12 +1277,7 @@ splitsRouter.post("/admin/disallow-token", async (req: Request, res: Response, n
       return res.status(200).json(result);
     } catch (error) {
       if (error instanceof RequestValidationError) {
-        return res.status().json({
-        error: ,
-        message: ,
-        requestId,
-        details: {}
-      });
+        return sendValidationError(res, requestId, error.message);
       }
       throw error;
     }
@@ -1349,12 +1291,7 @@ splitsRouter.post("/admin/pause-distributions", async (req: Request, res: Respon
     const requestId = res.locals.requestId;
     const parsed = pauseDistributionsSchema.safeParse(req.body);
     if (!parsed.success) {
-      return res.status().json({
-        error: ,
-        message: ,
-        requestId,
-        details: 
-      });
+      return sendValidationError(res, requestId, "Invalid request payload.", parsed.error.flatten());
     }
 
     try {
@@ -1362,12 +1299,7 @@ splitsRouter.post("/admin/pause-distributions", async (req: Request, res: Respon
       return res.status(200).json(result);
     } catch (error) {
       if (error instanceof RequestValidationError) {
-        return res.status().json({
-        error: ,
-        message: ,
-        requestId,
-        details: {}
-      });
+        return sendValidationError(res, requestId, error.message);
       }
       throw error;
     }
@@ -1381,12 +1313,7 @@ splitsRouter.post("/admin/unpause-distributions", async (req: Request, res: Resp
     const requestId = res.locals.requestId;
     const parsed = pauseDistributionsSchema.safeParse(req.body);
     if (!parsed.success) {
-      return res.status().json({
-        error: ,
-        message: ,
-        requestId,
-        details: 
-      });
+      return sendValidationError(res, requestId, "Invalid request payload.", parsed.error.flatten());
     }
 
     try {
@@ -1394,12 +1321,7 @@ splitsRouter.post("/admin/unpause-distributions", async (req: Request, res: Resp
       return res.status(200).json(result);
     } catch (error) {
       if (error instanceof RequestValidationError) {
-        return res.status().json({
-        error: ,
-        message: ,
-        requestId,
-        details: {}
-      });
+        return sendValidationError(res, requestId, error.message);
       }
       throw error;
     }
@@ -1547,12 +1469,7 @@ splitsRouter.get("/admin/is-token-allowed", async (req: Request, res: Response, 
     const requestId = res.locals.requestId;
     const parsed = isTokenAllowedQuerySchema.safeParse(req.query);
     if (!parsed.success) {
-      return res.status().json({
-        error: ,
-        message: ,
-        requestId,
-        details: 
-      });
+      return sendValidationError(res, requestId, "Invalid request payload.", parsed.error.flatten());
     }
     const { token } = parsed.data;
 
@@ -1604,12 +1521,7 @@ splitsRouter.get("/admin/unallocated", async (req: Request, res: Response, next:
     const requestId = res.locals.requestId;
     const parsed = unallocatedQuerySchema.safeParse(req.query);
     if (!parsed.success) {
-      return res.status().json({
-        error: ,
-        message: ,
-        requestId,
-        details: 
-      });
+      return sendValidationError(res, requestId, "Invalid request payload.", parsed.error.flatten());
     }
     const { token } = parsed.data;
 
@@ -1699,12 +1611,7 @@ splitsRouter.post("/admin/withdraw-unallocated", async (req: Request, res: Respo
     const requestId = res.locals.requestId;
     const parsed = withdrawUnallocatedSchema.safeParse(req.body);
     if (!parsed.success) {
-      return res.status().json({
-        error: ,
-        message: ,
-        requestId,
-        details: 
-      });
+      return sendValidationError(res, requestId, "Invalid request payload.", parsed.error.flatten());
     }
 
     try {

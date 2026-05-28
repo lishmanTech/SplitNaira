@@ -1,6 +1,5 @@
 import { Router } from "express";
 import swaggerUi from "swagger-ui-express";
-import { createRequire } from "module";
 import { fileURLToPath } from "url";
 import path from "path";
 import fs from "fs";

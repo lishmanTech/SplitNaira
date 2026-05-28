@@ -44,6 +44,7 @@ usersRouter.post("/register", async (req: Request, res: Response, next: NextFunc
           ErrorType.VALIDATION,
           ErrorCode.VALIDATION_ERROR,
           "User with this wallet address already exists.",
+          undefined,
           { walletAddress }
         );
       }

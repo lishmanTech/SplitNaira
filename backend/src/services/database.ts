@@ -1,5 +1,5 @@
 import "reflect-metadata";
-import { DataSource } from "typeorm";
+import { DataSource, type QueryRunner } from "typeorm";
 import { getEnv } from "../config/env.js";
 import { User } from "../entities/User.js";
 import { TransactionRecord } from "../entities/Transaction.js";
@@ -81,7 +81,7 @@ export function getDataSource(): DataSource {
  * @returns Promise with the callback result
  */
 export async function withTransaction<T>(
-  callback: (queryRunner: any) => Promise<T>
+  callback: (queryRunner: QueryRunner) => Promise<T>
 ): Promise<T> {
   const dataSource = getDataSource();
   const queryRunner = dataSource.createQueryRunner();

@@ -77,7 +77,8 @@ transactionsRouter.get("/history", async (req: Request, res: Response, next: Nex
 transactionsRouter.get("/:txHash", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const requestId = res.locals.requestId;
-    const { txHash } = req.params;
+    const txHashParam = req.params.txHash;
+    const txHash = Array.isArray(txHashParam) ? txHashParam[0] : txHashParam;
 
     if (!txHash || txHash.length === 0) {
       throw new AppError(
@@ -132,7 +133,16 @@ transactionsRouter.get("/recipient/:walletAddress", async (req: Request, res: Re
 
     logger.info("Fetching transactions for recipient", { walletAddress, requestId });
 
-    const transactions = await payoutHistoryService.getPayoutsByRecipient(parsed.data);
+    const recipient = parsed.data;
+    if (!recipient) {
+      throw new AppError(
+        ErrorType.VALIDATION,
+        ErrorCode.VALIDATION_ERROR,
+        "Wallet address is required."
+      );
+    }
+
+    const transactions = await payoutHistoryService.getPayoutsByRecipient(recipient);
 
     return res.status(200).json({
       transactions,

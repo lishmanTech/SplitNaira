@@ -4,8 +4,7 @@ import {
   Contract,
   TransactionBuilder,
   nativeToScVal,
-  rpc,
-  xdr
+  rpc
 } from "@stellar/stellar-sdk";
 import { getEnv } from "../config/env.js";
 import { logger } from "./logger.js";
@@ -69,7 +68,7 @@ export async function executeWithRetry<T>(
         setTimeout(() => reject(new RpcTimeoutError()), timeoutMs)
       );
 
-      return Promise.race([operation(), timeoutPromise]);
+      return await Promise.race([operation(), timeoutPromise]);
     } catch (error) {
       lastError = error as Error;
 

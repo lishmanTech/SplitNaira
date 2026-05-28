@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DataSource } from "typeorm";
 import { clearEnvCache } from "../config/env.js";
-import { closeDatabase, initDatabase } from "./database.js";
+import { closeDatabase, initDatabase, withTransaction } from "./database.js";
 
 const testEnv = {
   DATABASE_URL: "postgres://test:test@localhost:5432/splitnaira_test",
@@ -70,5 +70,96 @@ describe("database initialization", () => {
 
     await closeDatabase();
     expect(destroySpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("withTransaction", () => {
+  beforeEach(async () => {
+    applyTestEnv();
+    clearEnvCache();
+    await closeDatabase();
+  });
+
+  afterEach(async () => {
+    await closeDatabase();
+    vi.restoreAllMocks();
+    clearEnvCache();
+    clearTestEnv();
+  });
+
+  it("commits when the callback succeeds", async () => {
+    vi.spyOn(DataSource.prototype, "initialize").mockImplementation(async function (this: DataSource) {
+      this.isInitialized = true;
+      return this;
+    });
+    vi.spyOn(DataSource.prototype, "destroy").mockImplementation(async function (this: DataSource) {
+      this.isInitialized = false;
+    });
+
+    const commitMock = vi.fn();
+    const rollbackMock = vi.fn();
+    const releaseMock = vi.fn();
+    const connectMock = vi.fn();
+    const startTransactionMock = vi.fn();
+
+    const queryRunner = {
+      connect: connectMock,
+      startTransaction: startTransactionMock,
+      commitTransaction: commitMock,
+      rollbackTransaction: rollbackMock,
+      release: releaseMock,
+      manager: {}
+    };
+
+    vi.spyOn(DataSource.prototype, "createQueryRunner").mockReturnValue(
+      queryRunner as unknown as ReturnType<DataSource["createQueryRunner"]>
+    );
+
+    await initDatabase();
+    const result = await withTransaction(async () => "ok");
+
+    expect(result).toBe("ok");
+    expect(commitMock).toHaveBeenCalledTimes(1);
+    expect(rollbackMock).not.toHaveBeenCalled();
+    expect(releaseMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("rolls back when the callback throws", async () => {
+    vi.spyOn(DataSource.prototype, "initialize").mockImplementation(async function (this: DataSource) {
+      this.isInitialized = true;
+      return this;
+    });
+    vi.spyOn(DataSource.prototype, "destroy").mockImplementation(async function (this: DataSource) {
+      this.isInitialized = false;
+    });
+
+    const commitMock = vi.fn();
+    const rollbackMock = vi.fn();
+    const releaseMock = vi.fn();
+
+    const queryRunner = {
+      connect: vi.fn(),
+      startTransaction: vi.fn(),
+      commitTransaction: commitMock,
+      rollbackTransaction: rollbackMock,
+      release: releaseMock,
+      manager: {}
+    };
+
+    vi.spyOn(DataSource.prototype, "createQueryRunner").mockReturnValue(
+      queryRunner as unknown as ReturnType<DataSource["createQueryRunner"]>
+    );
+
+    await initDatabase();
+
+    await expect(
+      withTransaction(async () => {
+        throw new Error("Database constraint violation");
+      })
+    ).rejects.toThrow("Database constraint violation");
+
+    expect(rollbackMock).toHaveBeenCalledTimes(1);
+    expect(commitMock).not.toHaveBeenCalled();
+    expect(releaseMock).toHaveBeenCalledTimes(1);
   });
 });

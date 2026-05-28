@@ -85,7 +85,7 @@ describe("validateEnv()", () => {
     const { HORIZON_URL: _omit, ...rest } = VALID_ENV;
     Object.assign(process.env, rest);
 
-    expect(() => validateEnv()).toThrowError(/horizon-testnet\.stellar\.org/);
+    expect(() => validateEnv()).toThrowError(/\.env\.example/);
   });
 
   it("throws when SOROBAN_RPC_URL is missing", () => {

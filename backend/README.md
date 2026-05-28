@@ -27,24 +27,17 @@ The API documentation is defined using Zod schemas and generated into an OpenAPI
 ## Deployment
 - CI/CD workflow: `../.github/workflows/backend-deploy.yml`
 - Deployment configuration and required secrets: [`../docs/backend-deploy.md`](../docs/backend-deploy.md)
-- **Compliance & Operational Readiness**: [`../docs/backend-compliance-improvements.md`](../docs/backend-compliance-improvements.md) - Production-grade improvements including transaction safety, logging, and deployment guidance.
+- **Release Operations (Wave 5)**: [`../docs/backend-release-ops-wave5.md`](../docs/backend-release-ops-wave5.md) — deployment checklist, rollback notes, and local CI steps.
 
-## Compliance & Production Readiness
+## Release operations & production readiness
 
-This backend implements production-grade compliance standards:
+- **Database transaction safety** — user registration runs inside `withTransaction()` with automatic rollback
+- **Structured logging** — critical paths use Winston with `requestId`
+- **Input validation** — `validateRequest` middleware returns consistent 400 payloads
+- **Error handling** — centralized `AppError` mapping and RPC retry policy
+- **Rate limiting** — layered limits on all route groups
 
-- ✅ **Database Transaction Safety** - User registration and critical operations wrapped in transactions with automatic rollback
-- ✅ **Structured Logging** - All logs use logger service with request IDs for tracing
-- ✅ **Input Validation** - Request validation middleware with detailed error messages
-- ✅ **Error Handling** - Comprehensive error handling with appropriate HTTP status codes
-- ✅ **Rate Limiting** - 5-tier layered rate limiting on all endpoints
-- ✅ **Security** - Stellar address verification, helmet security headers, CORS configuration
-
-See [`../docs/backend-compliance-improvements.md`](../docs/backend-compliance-improvements.md) for:
-- Implementation details of critical fixes
-- Deployment safety procedures
-- Rollback procedures
-- Operational impact and monitoring guidance
+See [`../docs/backend-release-ops-wave5.md`](../docs/backend-release-ops-wave5.md) for the implementation plan, deploy/rollback runbook, and CI commands.
 
 ## Structure
 - `src/index.ts` - App entry
