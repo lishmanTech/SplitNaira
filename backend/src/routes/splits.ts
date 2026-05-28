@@ -401,7 +401,7 @@ async function simulateReadOnlyContractCall(
   return "result" in simulated ? simulated.result?.retval : undefined;
 }
 
-async function listProjects(start: number, limit: number) {
+async function fetchProjectsFromContract(start: number, limit: number) {
   const cacheKey = `list_projects:${start}:${limit}`;
   const cached = getCached<unknown[]>(cacheKey);
   if (cached !== undefined) {
@@ -438,6 +438,37 @@ async function listProjects(start: number, limit: number) {
   const result = scValToNative(retval) as unknown[];
   setCached(cacheKey, result);
   return result;
+}
+
+async function listProjects(
+  start: number,
+  limit: number,
+  search?: string,
+  type?: string,
+) {
+  if (!search && !type) {
+    return fetchProjectsFromContract(start, limit);
+  }
+
+  const maxFetch = 1000;
+  const allProjects = await fetchProjectsFromContract(0, maxFetch);
+
+  let filtered: unknown[] = allProjects;
+  if (search) {
+    const q = search.toLowerCase();
+    filtered = filtered.filter((p: Record<string, unknown>) =>
+      String(p.title ?? "").toLowerCase().includes(q) ||
+      String(p.projectId ?? "").toLowerCase().includes(q)
+    );
+  }
+  if (type) {
+    const t = type.toLowerCase();
+    filtered = filtered.filter((p: Record<string, unknown>) =>
+      String(p.projectType ?? "").toLowerCase() === t
+    );
+  }
+
+  return filtered.slice(start, start + limit);
 }
 
 async function fetchProjectById(projectId: string) {
@@ -684,7 +715,9 @@ async function buildUpdateMetadataUnsignedXdr(input: {
 
 export const listProjectsSchema = z.object({
   start: z.coerce.number().int().min(0).default(0),
-  limit: z.coerce.number().int().min(1).max(100).default(10)
+  limit: z.coerce.number().int().min(1).max(100).default(10),
+  search: z.string().optional(),
+  type: z.string().optional(),
 });
 
 splitsRouter.get("/", async (req: Request, res: Response, next: NextFunction) => {
@@ -700,7 +733,8 @@ splitsRouter.get("/", async (req: Request, res: Response, next: NextFunction) =>
       );
     }
 
-    const projects = await listProjects(parsed.data.start, parsed.data.limit);
+    const { start, limit, search, type } = parsed.data;
+    const projects = await listProjects(start, limit, search, type);
     return res.status(200).json(serializeBigInts(projects));
   } catch (error) {
     return next(error);
