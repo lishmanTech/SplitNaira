@@ -5,13 +5,15 @@ import { checkSorobanReachability } from "../services/stellar.js";
 
 export const healthRouter = Router();
 
+const SERVICE_VERSION = process.env.npm_package_version ?? "unknown";
+
 /**
  * Health endpoint - indicates service is running
- * Returns 200 OK if the service process is healthy
  */
 healthRouter.get("/", (_req, res) => {
   res.json({
     status: "ok",
+    version: SERVICE_VERSION,
     uptime: process.uptime(),
     timestamp: new Date().toISOString()
   });
@@ -19,18 +21,13 @@ healthRouter.get("/", (_req, res) => {
 
 /**
  * Liveness endpoint - indicates service is not in a broken state
- * Returns 200 OK if the service is alive (should not be restarted)
  */
 healthRouter.get("/live", (_req, res) => {
-  res.json({
-    status: "ok"
-  });
+  res.json({ status: "ok" });
 });
 
 /**
  * Readiness endpoint - indicates service is ready to serve traffic
- * Returns 200 OK if all dependencies (env, database) are ready
- * Returns 503 Service Unavailable if any dependency is missing
  */
 healthRouter.get("/ready", async (_req, res, next) => {
   const requestId = res.locals.requestId;
@@ -40,8 +37,7 @@ healthRouter.get("/ready", async (_req, res, next) => {
     rpc: { ok: false, message: "" },
     contract: { ok: false, message: "" }
   };
-  
-  // Check environment variables
+
   const envDiagnostics = getEnvDiagnostics();
   if (!envDiagnostics.ok) {
     components.env = { ok: false };
@@ -52,11 +48,11 @@ healthRouter.get("/ready", async (_req, res, next) => {
       components,
       issues: envDiagnostics.issues,
       requestId,
-        details: {}});
+      details: {}
+    });
     return;
   }
 
-  // Check database connection
   try {
     getDataSource();
     components.db = { ok: true, message: "connected" };
@@ -71,7 +67,8 @@ healthRouter.get("/ready", async (_req, res, next) => {
       message: "Database connection is not available.",
       components,
       requestId,
-        details: {}});
+      details: {}
+    });
     return;
   }
 
@@ -90,7 +87,8 @@ healthRouter.get("/ready", async (_req, res, next) => {
         message: "Soroban RPC or contract simulation is not ready.",
         components,
         requestId,
-        details: {}});
+        details: {}
+      });
       return;
     }
   } catch (error) {
