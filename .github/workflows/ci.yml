@@ -11,6 +11,7 @@ permissions:
 jobs:
   data-integrity:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v6
@@ -23,6 +24,7 @@ jobs:
   frontend:
     needs: data-integrity
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       CI: true
     steps:
@@ -39,6 +41,7 @@ jobs:
   backend:
     needs: data-integrity
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     services:
       postgres:
         image: postgres:16
@@ -48,7 +51,7 @@ jobs:
           POSTGRES_DB: splitnaira_ci
         ports:
           - 5432:5432
-        options: >-
+        options: >
           --health-cmd "pg_isready -U splitnaira -d splitnaira_ci"
           --health-interval 10s
           --health-timeout 5s
@@ -80,6 +83,7 @@ jobs:
   contracts:
     needs: data-integrity
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: contracts
