@@ -23,6 +23,16 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci --no-audit --no-fund
+      - name: Wait for Postgres to be ready
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y postgresql-client
+          # wait up to 30s for Postgres service started by GitHub Actions
+          for i in $(seq 1 30); do
+            pg_isready -h localhost -p 5432 -U splitnaira -d splitnaira_ci && break
+            echo "Waiting for postgres... ($i)"
+            sleep 1
+          done
       - run: npm run verify:data-integrity
 
   frontend:
