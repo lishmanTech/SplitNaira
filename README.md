@@ -131,6 +131,18 @@ X-Correlation-Id
 
 Structured JSON logs are emitted for production monitoring.
 
+## Mainnet Readiness
+
+Endpoint:
+
+GET /ops/mainnet-readiness
+
+Purpose:
+
+- Deployment validation
+- Launch verification
+- Configuration auditing
+
 ## Documentation
 
 - [Deployment Runbook](./docs/deployment.md)
