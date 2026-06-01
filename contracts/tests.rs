@@ -1542,6 +1542,34 @@ fn test_pause_and_unpause_distributions() {
 }
 
 #[test]
+fn test_pause_and_unpause_emit_events() {
+    let (env, _admin, _token) = create_test_env();
+    let contract_id = env.register_contract(None, SplitNairaContract);
+    let client = SplitNairaContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.set_admin(&admin);
+
+    let before_count = env.events().all().len();
+
+    client.pause_distributions(&admin);
+    client.unpause_distributions(&admin);
+
+    let events = env.events().all();
+    assert!(events.len() >= before_count + 2);
+
+    let pause_event = events.get(before_count).unwrap();
+    assert_eq!(pause_event.0, contract_id);
+    assert_eq!(pause_event.1.get(0).unwrap(), Symbol::new(&env, "distributions_paused").into_val(&env));
+    assert_eq!(pause_event.1.get(1).unwrap(), admin.clone().into_val(&env));
+
+    let unpause_event = events.get(before_count + 1).unwrap();
+    assert_eq!(unpause_event.0, contract_id);
+    assert_eq!(unpause_event.1.get(0).unwrap(), Symbol::new(&env, "distributions_unpaused").into_val(&env));
+    assert_eq!(unpause_event.1.get(1).unwrap(), admin.clone().into_val(&env));
+}
+
+#[test]
 fn test_distribute_fails_when_paused() {
     let (env, _admin, token) = create_test_env();
     let contract_id = env.register_contract(None, SplitNairaContract);
@@ -2234,6 +2262,19 @@ fn test_withdraw_unallocated_fails_with_invalid_amount() {
 
     let result = client.try_withdraw_unallocated(&contract_admin, &token, &recovery_to, &0i128);
     assert_eq!(result, Err(Ok(SplitError::InvalidAmount)));
+}
+
+#[test]
+fn test_withdraw_unallocated_fails_when_recipient_is_contract() {
+    let (env, _token_admin, token) = create_test_env();
+    let contract_id = env.register_contract(None, SplitNairaContract);
+    let client = SplitNairaContractClient::new(&env, &contract_id);
+
+    let contract_admin = Address::generate(&env);
+    client.set_admin(&contract_admin);
+
+    let result = client.try_withdraw_unallocated(&contract_admin, &token, &contract_id, &1_0000000i128);
+    assert_eq!(result, Err(Ok(SplitError::InvalidRecipient)));
 }
 
 // ============================================================
