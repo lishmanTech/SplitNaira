@@ -43,7 +43,8 @@ import {
   pauseDistributionsSchema,
   isTokenAllowedQuerySchema,
   unallocatedQuerySchema,
-  withdrawUnallocatedSchema
+  withdrawUnallocatedSchema,
+  claimSchema
 } from "../schemas/splits.js";
 
 import {
@@ -67,6 +68,7 @@ import {
   buildAllowTokenUnsignedXdr,
   buildDisallowTokenUnsignedXdr,
   buildWithdrawUnallocatedUnsignedXdr,
+  buildClaimUnsignedXdr,
   buildUnsignedContractCall
 } from "../services/splits.service.js";
 
@@ -88,7 +90,8 @@ export {
   pauseDistributionsSchema,
   isTokenAllowedQuerySchema,
   unallocatedQuerySchema,
-  withdrawUnallocatedSchema
+  withdrawUnallocatedSchema,
+  claimSchema
 } from "../schemas/splits.js";
 
 export {
@@ -120,7 +123,8 @@ export {
   buildUnpauseDistributionsUnsignedXdr,
   buildAllowTokenUnsignedXdr,
   buildDisallowTokenUnsignedXdr,
-  buildWithdrawUnallocatedUnsignedXdr
+  buildWithdrawUnallocatedUnsignedXdr,
+  buildClaimUnsignedXdr
 } from "../services/splits.service.js";
 
 function sendValidationError(
@@ -832,6 +836,44 @@ splitsRouter.post("/admin/withdraw-unallocated", async (req: Request, res: Respo
   }
 });
 
+
+// ============================================================
+// Wave 5: self-service claim endpoint
+// ============================================================
+
+splitsRouter.post("/:projectId/claim", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const requestId = res.locals.requestId;
+
+    const parsedParams = projectIdParamSchema.safeParse(req.params.projectId);
+    const parsedBody = claimSchema.safeParse(req.body);
+
+    if (!parsedParams.success || !parsedBody.success) {
+      return sendValidationError(res, requestId, "Invalid request payload.", {
+        params: parsedParams.success ? null : parsedParams.error.flatten(),
+        body: parsedBody.success ? null : parsedBody.error.flatten()
+      });
+    }
+
+    try {
+      const result = await buildClaimUnsignedXdr({
+        projectId: parsedParams.data,
+        claimer: parsedBody.data.claimer
+      });
+      // Evict cached project state; balance will change after submission
+      invalidateCache(`project:${parsedParams.data}`);
+      invalidateCacheByPrefix("list_projects:");
+      return res.status(200).json(result);
+    } catch (error) {
+      if (error instanceof RequestValidationError) {
+        return sendValidationError(res, requestId, error.message);
+      }
+      throw error;
+    }
+  } catch (error) {
+    return next(error);
+  }
+});
 // ============================================================
 // Cache diagnostics (non-sensitive internal endpoint)
 // ============================================================
