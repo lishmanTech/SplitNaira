@@ -70,6 +70,32 @@ npm run migration:run
 
 The command reads `DATABASE_URL` plus the same Stellar environment variables used by the backend. CI validates that migrations apply on a clean PostgreSQL database before deployment.
 
+## Wallet & Payments Admin Controls
+
+`/splits/admin/*` now supports an environment-backed operator control plane for wallet and payout operations.
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `PAYMENTS_ADMIN_API_KEY` | Production: **Yes** | Shared secret required in the `x-admin-api-key` header for all `/splits/admin/*` requests |
+| `PAYMENTS_ADMIN_WRITE_ENABLED` | No (`true` by default) | Emergency switch for admin write routes such as pause/unpause, allowlist changes, and unallocated-withdrawal XDR generation |
+
+Recommended production configuration:
+
+```bash
+PAYMENTS_ADMIN_API_KEY=<long-random-secret-from-secret-manager>
+PAYMENTS_ADMIN_WRITE_ENABLED=true
+```
+
+### Emergency freeze / rollback-aware mode
+
+When a payout incident, contract anomaly, or rollback is in progress:
+
+```bash
+PAYMENTS_ADMIN_WRITE_ENABLED=false
+```
+
+With that flag set, backend admin reads remain available for diagnostics, while mutating `/splits/admin/*` routes return `503 payments_admin_writes_disabled`. This gives ops a fast way to stop new recovery/pause/allowlist actions without changing code.
+
 ## Readiness Checks
 
 `GET /health/ready` returns component status for `db`, `rpc`, and `contract`.
@@ -195,4 +221,3 @@ STRICT_RESPONSE_VALIDATION=false
 Strict mode prevents clients from receiving corrupt/partial data when the API contract drifts from what the server produces, catching issues at the API layer rather than in the frontend. The cost is that any schema mismatch becomes a 500 visible to callers — deploy with confidence by running the full test suite first.
 
 In lenient mode, mismatches are only visible in logs, making it safe to iterate on endpoints before full schema coverage is achieved.
-

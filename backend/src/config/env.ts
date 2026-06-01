@@ -29,6 +29,12 @@ const backendEnvSchema = z.object({
     .optional()
     .default("true"),
 
+  PAYMENTS_ADMIN_API_KEY: z.string().optional(),
+  PAYMENTS_ADMIN_WRITE_ENABLED: z
+    .enum(["true", "false"])
+    .optional()
+    .default("true"),
+
   STRICT_RESPONSE_VALIDATION: z
     .enum(["true", "false"])
     .optional()
@@ -128,6 +134,15 @@ const backendEnvSchema = z.object({
         });
       }
     }
+
+    if (!data.PAYMENTS_ADMIN_API_KEY || data.PAYMENTS_ADMIN_API_KEY.trim().length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["PAYMENTS_ADMIN_API_KEY"],
+        message:
+          "PAYMENTS_ADMIN_API_KEY is required in production to protect /splits/admin wallet and payment operations.",
+      });
+    }
   }
 });
 
@@ -202,6 +217,8 @@ export function printEnvDiagnostics(): void {
     { key: "LOG_FORMAT", required: false },
     { key: "SENTRY_DSN", required: false },
     { key: "SENTRY_ENVIRONMENT", required: false },
+    { key: "PAYMENTS_ADMIN_API_KEY", required: false },
+    { key: "PAYMENTS_ADMIN_WRITE_ENABLED", required: false },
     { key: "STRICT_RESPONSE_VALIDATION", required: false },
     { key: "DATABASE_URL", required: true },
     { key: "HORIZON_URL", required: true },

@@ -141,6 +141,8 @@ docker compose --env-file .env.local up
 - API Documentation: http://localhost:3001/api/docs
 - Database: localhost:5432 (user: `splitnaira`, password: `splitnaira`)
 
+For production wallet and payment operations, configure `PAYMENTS_ADMIN_API_KEY` on the backend before exposing `/splits/admin/*`. If payout-impacting admin actions need to be frozen during an incident or rollback, set `PAYMENTS_ADMIN_WRITE_ENABLED=false` and redeploy or restart the backend with the updated environment.
+
 ### Individual Project Commands
 
 #### Frontend

@@ -15,6 +15,10 @@ import { transactionsRouter } from "./routes/transactions.js";
 import { errorHandler, notFoundHandler } from "./middleware/error.js";
 import { requestIdMiddleware } from "./middleware/request-id.js";
 import { globalLimiter, readLimiter, writeLimiter, adminLimiter, authLimiter } from "./middleware/rate-limit.js";
+import {
+  enforcePaymentsAdminWriteEnabled,
+  requirePaymentsAdminAccess
+} from "./middleware/payments-admin.js";
 import { validateEnv, printEnvDiagnostics } from "./config/env.js";
 import { initDatabase, closeDatabase } from "./services/database.js";
 import { logger } from "./services/logger.js";
@@ -84,7 +88,12 @@ app.use(
 );
 
 app.use("/health", readLimiter);
-app.use("/splits/admin", adminLimiter);
+app.use(
+  "/splits/admin",
+  adminLimiter,
+  requirePaymentsAdminAccess,
+  enforcePaymentsAdminWriteEnabled
+);
 app.use("/splits", (req, res, next) => {
   if (req.method === "GET") return readLimiter(req, res, next);
   return writeLimiter(req, res, next);
