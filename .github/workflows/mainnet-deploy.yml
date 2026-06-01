@@ -33,13 +33,35 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 20
+          cache: npm
       - run: npm ci --no-audit --no-fund
       - name: Validate mainnet deploy configuration
         run: npx tsx backend/src/utils/deploy-config.ts validate "$DEPLOY_TARGET_INPUT" "$DEPLOY_ENV_INPUT"
 
-  deploy-mainnet:
+  verify-mainnet:
     runs-on: ubuntu-latest
     needs: validate-mainnet-config
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Validate data integrity
+        run: npm run verify:data-integrity
+      - name: Backend lint
+        run: npm run lint -w backend
+      - name: Backend build
+        run: npm run build -w backend
+      - name: Backend tests
+        run: npm run test -w backend -- --reporter=verbose
+
+  deploy-mainnet:
+    runs-on: ubuntu-latest
+    needs:
+      - validate-mainnet-config
+      - verify-mainnet
     environment: production
     env:
       DEPLOY_TARGET_INPUT: ${{ github.event.inputs.deploy_target }}

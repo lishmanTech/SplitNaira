@@ -11,9 +11,10 @@ This project deploys the backend via GitHub Actions using Render deploy hooks.
   - Push to `main` (for merge-based CD via backend-deploy)
   - Manual run via `workflow_dispatch` (backend-deploy or mainnet-deploy)
 - Pipeline stages:
-  - `verify-backend`: install, lint, and build backend
+  - `verify-backend`: install, verify data integrity, lint, build, and test backend
   - `validate-deploy-config`: verify `deploy_environment` and production secrets before deployment
   - `deploy-backend`: trigger deployment target
+  - `verify-mainnet`: manual production path validates data integrity, lint, build, and tests
   - `deploy-mainnet`: explicit mainnet release path for production
 
 ## Deployment Target

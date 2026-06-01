@@ -35,7 +35,10 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 20
+          cache: npm
       - run: npm ci --no-audit --no-fund
+      - name: Validate data integrity
+        run: cd .. && npm run verify:data-integrity
       - run: npm run lint
       - run: npm run build
       - run: npm run test
@@ -54,6 +57,7 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 20
+          cache: npm
       - run: npm ci --no-audit --no-fund
       - name: Validate deploy configuration
         run: npx tsx backend/src/utils/deploy-config.ts validate "$DEPLOY_TARGET_INPUT" "$DEPLOY_ENV_INPUT"

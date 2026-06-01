@@ -265,8 +265,8 @@ npm run verify:data-integrity   # contract interface + generated types in sync
 
 ## Mainnet launch readiness
 
-- `backend-deploy.yml` now validates production deploy configuration and required secrets before triggering Render.
-- `mainnet-deploy.yml` provides an explicit manual production release gate for human-reviewed mainnet launch.
+- `backend-deploy.yml` now validates production deploy configuration, data integrity, and backend build/test before triggering Render.
+- `mainnet-deploy.yml` now runs an explicit manual production release gate with deploy config validation, data integrity, backend lint, build, and tests.
 - CI pipelines use concurrency groups to cancel stale runs and keep mainline validation fast.
 - Operational rollback guidance is documented in `docs/runbooks/ci-data-integrity.md` and `docs/deployment.md`.
 
