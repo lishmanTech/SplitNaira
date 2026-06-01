@@ -191,3 +191,8 @@ export const withdrawUnallocatedSchema = z.object({
     .positive("amount must be greater than 0")
     .describe("amount in stroops to recover")
 });
+
+// Wave 5: self-service claim schema
+export const claimSchema = z.object({
+  claimer: stellarAddressSchema.describe("collaborator address performing the claim")
+});
