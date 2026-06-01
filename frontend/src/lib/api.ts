@@ -1,5 +1,6 @@
 export {
   ApiClient,
+  ApiError,
   type CreateSplitPayload,
   type ProjectHistoryItem,
   type ProjectHistoryResponse,

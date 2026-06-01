@@ -5,6 +5,43 @@ import type { SplitProject, Collaborator } from "./stellar";
 import { getEnv } from "./env";
 import { withRetry } from "./retry";
 
+// ── API Error classification ──────────────────────────────────────────────────
+
+/**
+ * Typed error thrown by ApiClient for all non-2xx responses.
+ * Consumers can branch on `status` or `code` for user-facing messages.
+ */
+export class ApiError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+    public readonly code?: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+
+  /** True for 4xx client errors (bad request, not found, etc.) */
+  get isClientError(): boolean {
+    return this.status >= 400 && this.status < 500;
+  }
+
+  /** True for 5xx server errors */
+  get isServerError(): boolean {
+    return this.status >= 500;
+  }
+
+  /** True for 404 Not Found */
+  get isNotFound(): boolean {
+    return this.status === 404;
+  }
+
+  /** True for 401 / 403 auth errors */
+  get isUnauthorized(): boolean {
+    return this.status === 401 || this.status === 403;
+  }
+}
+
 export interface CreateSplitPayload {
   owner: string;
   projectId: string;
@@ -96,18 +133,41 @@ export class ApiClient {
     this.defaultTimeout = timeout ?? 30_000;
   }
 
-  private toErrorMessage(
+  private toApiError(
     status: number,
     payload: unknown,
     fallback: string,
-  ): string {
-    if (payload && typeof payload === "object" && "message" in payload) {
-      const message = (payload as { message?: unknown }).message;
-      if (typeof message === "string" && message.trim()) {
-        return message;
+  ): ApiError {
+    let message = `${fallback} (status ${status})`;
+    let code: string | undefined;
+
+    if (payload && typeof payload === "object") {
+      const p = payload as Record<string, unknown>;
+      if (typeof p.message === "string" && p.message.trim()) {
+        message = p.message;
+      }
+      if (typeof p.error === "string" && p.error.trim()) {
+        code = p.error;
+      } else if (typeof p.code === "string" && p.code.trim()) {
+        code = p.code;
       }
     }
-    return `${fallback} (status ${status})`;
+
+    return new ApiError(status, message, code);
+  }
+
+  /**
+   * Determines whether a failed request should be retried.
+   * 4xx client errors (except 429 Too Many Requests) are not retried —
+   * they indicate a bad request that will not succeed on retry.
+   */
+  private shouldRetry(err: unknown): boolean {
+    if (err instanceof ApiError) {
+      // Retry on 429 (rate limit) and all 5xx server errors
+      return err.status === 429 || err.isServerError;
+    }
+    // Retry on network/timeout errors
+    return true;
   }
 
   private async requestJson<T>(
@@ -116,41 +176,49 @@ export class ApiClient {
     init?: RequestInit & { timeout?: number },
   ): Promise<T> {
     try {
-      return await withRetry(async () => {
-        const timeout = init?.timeout ?? this.defaultTimeout;
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), timeout);
+      return await withRetry(
+        async () => {
+          const timeout = init?.timeout ?? this.defaultTimeout;
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-        try {
-          const response = await fetch(`${this.baseUrl}${path}`, {
-            ...init,
-            signal: controller.signal,
-          });
-          const body = (await response.json().catch(() => null)) as unknown;
-          if (!response.ok) {
-            throw new Error(this.toErrorMessage(response.status, body, fallbackMessage));
+          try {
+            const response = await fetch(`${this.baseUrl}${path}`, {
+              ...init,
+              signal: controller.signal,
+            });
+            const body = (await response.json().catch(() => null)) as unknown;
+            if (!response.ok) {
+              throw this.toApiError(response.status, body, fallbackMessage);
+            }
+            return body as T;
+          } catch (err) {
+            if (err instanceof DOMException && err.name === "AbortError") {
+              throw new Error(`Request timed out after ${timeout}ms: ${path}`);
+            }
+            throw err;
+          } finally {
+            clearTimeout(timeoutId);
           }
-          return body as T;
-        } catch (err) {
-          if (err instanceof DOMException && err.name === "AbortError") {
-            throw new Error(`Request timed out after ${timeout}ms: ${path}`);
-          }
-          throw err;
-        } finally {
-          clearTimeout(timeoutId);
-        }
-      }, 3, 500);
+        },
+        3,
+        500,
+        (err) => this.shouldRetry(err),
+      );
     } catch (err) {
       if (err instanceof Error) {
         Sentry.captureException(err, {
           tags: {
             section: "api-client",
             path,
+            ...(err instanceof ApiError
+              ? { httpStatus: String(err.status), errorCode: err.code ?? "unknown" }
+              : {}),
           },
           extra: {
             fallbackMessage,
             init,
-          }
+          },
         });
       }
       throw err;

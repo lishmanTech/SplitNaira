@@ -240,6 +240,9 @@ npm run analyze
 - [Contract Release & Upgrade](./docs/contract-release-and-upgrade-runbook.md)
 - [Backend CD](./docs/backend-deploy.md)
 - [API Docs](./docs/openapi.json)
+- [Mainnet Launch Runbook](./docs/runbooks/mainnet-launch.md)
+- [User Onboarding Runbook](./docs/runbooks/user-onboarding.md)
+- [API Evolution Runbook](./docs/runbooks/api-evolution.md)
 
 ### Data integrity & release ops
 
@@ -247,12 +250,39 @@ npm run analyze
 npm run verify:data-integrity   # contract interface + generated types in sync
 ```
 
+## CI/CD Pipelines
+
+| Workflow | Trigger | Purpose |
+|----------|---------|---------|
+| `ci.yml` | push/PR to `main` | Full suite: data-integrity, frontend, backend, contracts, security audit |
+| `backend-deploy.yml` | CI success on `main` / manual | Deploy backend to staging or production via Render |
+| `mainnet-deploy.yml` | Manual only | Production mainnet deploy with pre-flight validation gate |
+| `user-onboarding-ci.yml` | push/PR touching onboarding files | Validate register/login/profile routes end-to-end |
+| `frontend-ci.yml` | push/PR to `main`/`develop` | Frontend lint, test, build |
+| `frontend-quality.yml` | PR | Frontend quality gate (lint, test, build) |
+| `contract-testnet-deploy.yml` | push to `main` (contracts path) | Deploy Soroban contract to testnet |
+| `smoke-testnet.yml` | Manual | Post-deploy smoke test on testnet |
+| `dependency-audit.yml` | Weekly / manual | `npm audit` for high-severity vulnerabilities |
+
 ## Mainnet launch readiness
 
-- `backend-deploy.yml` now validates production deploy configuration and required secrets before triggering Render.
-- `mainnet-deploy.yml` provides an explicit manual production release gate for human-reviewed mainnet launch.
+- `mainnet-deploy.yml` enforces a strict gate sequence: secret validation → backend verification → readiness gate → deploy → smoke test → rollback instructions on failure.
+- `cancel-in-progress: false` ensures an in-flight mainnet deploy is never cancelled by a concurrent run.
+- `backend-deploy.yml` validates production deploy configuration and required secrets before triggering Render.
+- `user-onboarding-ci.yml` validates the full register → login → profile lifecycle on every onboarding-related change.
 - CI pipelines use concurrency groups to cancel stale runs and keep mainline validation fast.
-- Operational rollback guidance is documented in `docs/runbooks/ci-data-integrity.md` and `docs/deployment.md`.
+- Operational rollback guidance is documented in `docs/runbooks/mainnet-launch.md`, `docs/runbooks/user-onboarding.md`, and `docs/runbooks/api-evolution.md`.
+
+## Frontend API Evolution
+
+The `ApiClient` (`frontend/src/lib/api-client.ts`) provides:
+
+- **`ApiError`** — typed error class with `isNotFound`, `isUnauthorized`, `isServerError`, `isClientError` helpers and a machine-readable `code` field.
+- **Smart retry** — 4xx client errors are not retried (fail fast); 5xx and network errors retry up to 3 times with back-off.
+- **Enriched Sentry tags** — `httpStatus` and `errorCode` on every captured `ApiError`.
+- **Response mapping** — `mapProjectToCamelCase` handles both camelCase and snake_case backend responses for safe field-naming migrations.
+
+See [API Evolution Runbook](./docs/runbooks/api-evolution.md) for change procedures.
 
 ## License
 
