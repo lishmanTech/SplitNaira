@@ -44,6 +44,12 @@ Set these in **Settings -> Secrets and variables -> Actions -> Variables**:
 
 - `BACKEND_DEPLOY_TARGET`
   - Default recommended value: `render`
+- `BACKEND_SMOKE_URL`
+  - Value: Base URL for post-deploy readiness smoke tests, such as `https://api-staging.example.com`
+- `BACKEND_METRICS_URL`
+  - Value: Optional metrics endpoint URL for CI/CD analytics validation, such as `https://api-staging.example.com/metrics`
+
+When `BACKEND_METRICS_URL` is configured, the post-deploy smoke check validates both `/health/ready` and the metrics exposition endpoint before the workflow succeeds.
 
 ## Notes
 
