@@ -16,6 +16,7 @@ interface ProjectsListProps {
   isLoadingProjectsList: boolean;
   projectsListError: string | null;
   isProjectsListStale: boolean;
+  hasMoreProjects: boolean;
   fetchedProject: SplitProject | null;
   setFetchedProject: (p: SplitProject | null) => void;
   fetchHistory: (id: string, cursor?: string) => Promise<void>;
@@ -41,6 +42,7 @@ export function ProjectsList({
   isLoadingProjectsList,
   projectsListError,
   isProjectsListStale,
+  hasMoreProjects,
   fetchedProject,
   setFetchedProject,
   fetchHistory,
@@ -112,8 +114,36 @@ export function ProjectsList({
               <p className="text-muted text-sm font-medium">
                 {projectsListError
                   ? "Could not load projects. Retry refresh."
-                  : "No projects loaded yet. Click Refresh Projects to load."}
+                  : "No projects found. Click Refresh Projects to load."}
               </p>
+            </div>
+          )}
+
+          {/* Load more — visible when backend signals more pages exist (#380) */}
+          {projectsList.length > 0 && (
+            <div className="flex flex-col items-center gap-3">
+              {hasMoreProjects ? (
+                <button
+                  onClick={() => void onFetchProjectsList(true)}
+                  disabled={isLoadingProjectsList}
+                  className="premium-button rounded-2xl bg-white/5 border border-white/10 px-10 py-4 text-xs font-bold uppercase tracking-widest text-muted hover:text-ink hover:bg-white/10 transition-all disabled:opacity-30"
+                >
+                  {isLoadingProjectsList ? (
+                    <span className="flex items-center gap-2">
+                      <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 12a8 8 0 018-8v8z" />
+                      </svg>
+                      Loading…
+                    </span>
+                  ) : (
+                    "Load More ↓"
+                  )}
+                </button>
+              ) : (
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted opacity-40">
+                  All projects loaded
+                </p>
+              )}
             </div>
           )}
         </div>

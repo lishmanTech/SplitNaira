@@ -1164,6 +1164,7 @@ export function SplitApp() {
             isLoadingProjectsList={isLoadingProjectsList}
             projectsListError={projectsListError}
             isProjectsListStale={isProjectsListStale}
+            hasMoreProjects={hasMoreProjects}
             fetchedProject={fetchedProject}
             setFetchedProject={setFetchedProject}
             fetchHistory={fetchHistory}
