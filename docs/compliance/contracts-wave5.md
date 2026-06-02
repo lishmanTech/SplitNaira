@@ -30,6 +30,13 @@ Deliver production-grade Soroban smart contract compliance improvements for Spli
 - Read-only methods like `get_project_count`, `get_project_ids`, `list_projects`, `get_balance`, `get_claimable`, and `get_unallocated_balance` provide an analytics-friendly query surface.
 - Event schema stability is enforced by contract tests, protecting Analytics & Insights consumers from breaking changes.
 
+### 2.6 Platform Hardening
+- `get_unallocated_balance` is hardened to use cached token-accounted project balances when available.
+- `deposit` now increments a cached project-balance total for the token being deposited.
+- `distribute` and `claim` now decrement the cached project-balance total when funds leave the project pool.
+- The cache falls back to the existing project-scan behavior if the cached key is not present, preserving upgrade compatibility.
+- This reduces read-side operational cost for monitoring and recovery workflows.
+
 ### 3. Access Control
 - Admin-only paths require configured admin auth
 - Project owner operations require explicit owner authorization

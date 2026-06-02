@@ -2307,6 +2307,50 @@ fn test_withdraw_unallocated_success_and_project_balance_unchanged() {
 }
 
 #[test]
+fn test_unallocated_balance_remains_correct_after_claim() {
+    let (env, _token_admin, token) = create_test_env();
+    let contract_id = env.register_contract(None, SplitNairaContract);
+    let client = SplitNairaContractClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let funder = Address::generate(&env);
+    let donor = Address::generate(&env);
+    let alice = Address::generate(&env);
+    let bob = Address::generate(&env);
+
+    let project_id = Symbol::new(&env, "claim_cache_invariant");
+    let collabs = make_collaborators(
+        &env,
+        Vec::from_slice(&env, &[alice.clone(), bob.clone()]),
+        Vec::from_slice(&env, &[6000u32, 4000u32]),
+    );
+
+    client.create_project(
+        &owner,
+        &project_id,
+        &String::from_str(&env, "Claim Cache Invariant"),
+        &String::from_str(&env, "music"),
+        &token,
+        &collabs,
+    );
+
+    deposit_to_project(&env, &client, &token, &project_id, &funder, 100_0000000i128);
+
+    let token_admin_client = token::StellarAssetClient::new(&env, &token);
+    token_admin_client.mint(&donor, &50_0000000i128);
+    let token_client = token::Client::new(&env, &token);
+    token_client.transfer(&donor, &contract_id, &50_0000000i128);
+
+    assert_eq!(client.get_unallocated_balance(&token), 50_0000000i128);
+
+    let claimed_amount = client.claim(&project_id, &alice);
+    assert_eq!(claimed_amount, 60_000000i128);
+    assert_eq!(token_client.balance(&alice), 60_000000i128);
+    assert_eq!(client.get_unallocated_balance(&token), 50_0000000i128);
+    assert_eq!(client.get_balance(&project_id), 40_0000000i128);
+}
+
+#[test]
 fn test_withdraw_unallocated_fails_when_amount_exceeds_available() {
     let (env, _token_admin, token) = create_test_env();
     let contract_id = env.register_contract(None, SplitNairaContract);
