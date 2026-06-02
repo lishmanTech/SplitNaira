@@ -1419,6 +1419,100 @@ fn test_deposit_emits_deposit_received_event() {
     assert!(all_events.contains(expected_deposit_event));
 }
 
+#[test]
+fn test_distribution_emits_analytics_events() {
+    let (env, _admin, token) = create_test_env();
+    let contract_id = env.register_contract(None, SplitNairaContract);
+    let client = SplitNairaContractClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let alice = Address::generate(&env);
+    let bob = Address::generate(&env);
+    let collabs = make_collaborators(
+        &env,
+        Vec::from_slice(&env, &[alice.clone(), bob.clone()]),
+        Vec::from_slice(&env, &[5000u32, 5000u32]),
+    );
+
+    let project_id = Symbol::new(&env, "evt_distribution");
+    client.create_project(
+        &owner,
+        &project_id,
+        &String::from_str(&env, "Distribution Event"),
+        &String::from_str(&env, "music"),
+        &token,
+        &collabs,
+    );
+
+    deposit_to_project(&env, &client, &token, &project_id, &owner, 10_000_000);
+    client.distribute(&project_id);
+
+    let all_events = env.events().all();
+    let expected_distribution_complete = (
+        contract_id.clone(),
+        vec![
+            &env,
+            Symbol::new(&env, "distribution_complete").into_val(&env),
+            project_id.clone().into_val(&env),
+        ],
+        (1u32, 10_000_000i128).into_val(&env),
+    );
+    let expected_payment_sent = (
+        contract_id.clone(),
+        vec![
+            &env,
+            Symbol::new(&env, "payment_sent").into_val(&env),
+            project_id.clone().into_val(&env),
+        ],
+        (alice.clone(), 5_000_000i128).into_val(&env),
+    );
+
+    assert!(all_events.contains(expected_distribution_complete));
+    assert!(all_events.contains(expected_payment_sent));
+}
+
+#[test]
+fn test_claim_emits_collaborator_claimed_event_for_analytics() {
+    let (env, _admin, token) = create_test_env();
+    let contract_id = env.register_contract(None, SplitNairaContract);
+    let client = SplitNairaContractClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let alice = Address::generate(&env);
+    let bob = Address::generate(&env);
+    let collabs = make_collaborators(
+        &env,
+        Vec::from_slice(&env, &[alice.clone(), bob.clone()]),
+        Vec::from_slice(&env, &[6000u32, 4000u32]),
+    );
+
+    let project_id = Symbol::new(&env, "evt_claim");
+    client.create_project(
+        &owner,
+        &project_id,
+        &String::from_str(&env, "Claim Event"),
+        &String::from_str(&env, "music"),
+        &token,
+        &collabs,
+    );
+
+    deposit_to_project(&env, &client, &token, &project_id, &owner, 10_000_000);
+    client.claim(&project_id, &alice);
+
+    let all_events = env.events().all();
+    let expected_claim_event = (
+        contract_id.clone(),
+        vec![
+            &env,
+            Symbol::new(&env, "collaborator_claimed").into_val(&env),
+            project_id.clone().into_val(&env),
+        ],
+        (alice.clone(), 6_000_000i128).into_val(&env),
+    );
+
+    assert!(all_events.contains(expected_claim_event));
+}
+
 // ============================================================
 //  ISSUE #52 — get_claimable TESTS
 // ============================================================

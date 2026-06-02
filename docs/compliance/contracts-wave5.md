@@ -18,6 +18,18 @@ Deliver production-grade Soroban smart contract compliance improvements for Spli
 - `get_unallocated_balance` computes contract holdings minus account-level project balances
 - `withdraw_unallocated` rejects contract-self transfers and prevents over-withdrawal
 
+### 2.5 Analytics & Insights
+- The contract exposes on-chain analytics signals through stable read-only query methods and event topics.
+- Analytics workflows should consume contract events such as:
+  - `project_created`
+  - `deposit_received`
+  - `payment_sent`
+  - `distribution_complete`
+  - `collaborator_claimed`
+  - `project_locked`
+- Read-only methods like `get_project_count`, `get_project_ids`, `list_projects`, `get_balance`, `get_claimable`, and `get_unallocated_balance` provide an analytics-friendly query surface.
+- Event schema stability is enforced by contract tests, protecting Analytics & Insights consumers from breaking changes.
+
 ### 3. Access Control
 - Admin-only paths require configured admin auth
 - Project owner operations require explicit owner authorization
