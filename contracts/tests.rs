@@ -743,6 +743,53 @@ fn test_deposit_rejects_zero_amount() {
 }
 
 #[test]
+fn test_deposit_fails_with_wrong_token() {
+    let (env, _admin, project_token) = create_test_env();
+    
+    // Create a different token contract
+    let wrong_token_admin = Address::generate(&env);
+    let wrong_token = env.register_stellar_asset_contract(wrong_token_admin);
+    
+    let contract_id = env.register_contract(None, SplitNairaContract);
+    let client = SplitNairaContractClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let funder = Address::generate(&env);
+    let alice = Address::generate(&env);
+    let bob = Address::generate(&env);
+
+    let collabs = make_collaborators(
+        &env,
+        Vec::from_slice(&env, &[alice.clone(), bob.clone()]),
+        Vec::from_slice(&env, &[5000u32, 5000u32]),
+    );
+
+    let project_id = Symbol::new(&env, "wrong_token_test");
+    client.create_project(
+        &owner,
+        &project_id,
+        &String::from_str(&env, "Wrong Token Project"),
+        &String::from_str(&env, "music"),
+        &project_token,
+        &collabs,
+    );
+
+    // Mint wrong token to funder
+    let wrong_token_client = token::StellarAssetClient::new(&env, &wrong_token);
+    wrong_token_client.mint(&funder, &1_000_0000000i128);
+
+    // Ensure funder has no project_token
+    let project_token_client = token::StellarAssetClient::new(&env, &project_token);
+    assert_eq!(project_token_client.balance(&funder), 0);
+
+    // Attempt to deposit. Since the contract implicitly uses project_token, this will fail
+    // at the Soroban token transfer level (funder has 0 balance/auth for project_token).
+    let result = client.try_deposit(&project_id, &funder, &100_0000000i128);
+    assert!(result.is_err(), "Deposit should fail when user has the wrong token");
+    assert_eq!(client.get_balance(&project_id), 0i128);
+}
+
+#[test]
 fn test_multiple_sequential_deposits() {
     let (env, _admin, token) = create_test_env();
     let contract_id = env.register_contract(None, SplitNairaContract);

@@ -26,6 +26,8 @@ use events::{
 };
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod hardening_tests;
 
 use errors::SplitError;
 
@@ -462,6 +464,9 @@ impl SplitNairaContract {
         let project = Self::get_project_or_err(&env, &project_id)?;
         from.require_auth();
 
+        // Note: The token_client is derived directly from `project.token`.
+        // This makes it correct by construction. If the user approved a different token,
+        // the `token_client.transfer` call will simply fail at the Soroban level.
         let token_client = token::Client::new(&env, &project.token);
         let contract_address = env.current_contract_address();
         token_client.transfer(&from, &contract_address, &amount);
