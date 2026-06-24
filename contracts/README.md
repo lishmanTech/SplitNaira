@@ -263,3 +263,6 @@ Soroban event shape is `(topics, data)`. This contract uses `topics = (event_nam
 - `14` `ArithmeticOverflow`
 - `15` `InsufficientUnallocated`
 - `16` `DistributionsPaused`
+- `17` `InvalidRecipient`
+- `18` `NotACollaborator`
+- `19` `TooManyCollaborators`
