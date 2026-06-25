@@ -18,6 +18,7 @@ export interface DepositRequest {
   projectId: string;
   from: string;
   amount: number;
+  token: string;
 }
 
 export interface AdminTokenRequest {
