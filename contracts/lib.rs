@@ -29,9 +29,22 @@ mod tests;
 
 use errors::SplitError;
 
-// Keep active projects alive by extending persistent TTL whenever they are
-// created, mutated, distributed, or read.
+/// Keep active projects alive by extending persistent TTL whenever they are
+/// created, mutated, distributed, or read.
+/// Active projects survive at least 5 days without a read; any read operation resets this clock.
+///
+/// TODO: If the contract's administrative initialization pattern is extended in the future,
+/// these hard-coded constants should be considered for migration into configurable instance-storage values.
 const PROJECT_TTL_THRESHOLD_LEDGERS: u32 = 50_000;
+
+/// Keep active projects alive by extending persistent TTL whenever they are
+/// created, mutated, distributed, or read.
+/// Active projects survive at least 5 days without a read; any read operation resets this clock.
+///
+/// 100_000 ledgers ≈ 5.8 days at 5s/ledger close time.
+///
+/// TODO: If the contract's administrative initialization pattern is extended in the future,
+/// these hard-coded constants should be considered for migration into configurable instance-storage values.
 const PROJECT_TTL_BUMP_LEDGERS: u32 = 100_000;
 
 // ============================================================
