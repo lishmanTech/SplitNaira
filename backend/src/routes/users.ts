@@ -17,19 +17,7 @@ usersRouter.post("/register", async (req: Request, res: Response, next: NextFunc
   try {
     const requestId = res.locals.requestId;
 
-    // Validate request body
-    const parsed = userRegistrationSchema.safeParse(req.body);
-    if (!parsed.success) {
-      throw new AppError(
-        ErrorType.VALIDATION,
-        ErrorCode.VALIDATION_ERROR,
-        "Invalid request payload.",
-        undefined,
-        parsed.error.flatten()
-      );
-    }
-
-    const { walletAddress, email, alias } = parsed.data;
+    const { walletAddress, email, alias } = userRegistrationSchema.parse(req.body);
 
     // Execute user registration within transaction
     const savedUser = await withTransaction(async (queryRunner) => {
@@ -97,19 +85,7 @@ usersRouter.post("/login", async (req: Request, res: Response, next: NextFunctio
       walletAddress: stellarAddressSchema
     });
 
-    // Validate request body
-    const parsed = loginSchema.safeParse(req.body);
-    if (!parsed.success) {
-      throw new AppError(
-        ErrorType.VALIDATION,
-        ErrorCode.VALIDATION_ERROR,
-        "Invalid request payload.",
-        undefined,
-        parsed.error.flatten()
-      );
-    }
-
-    const { walletAddress } = parsed.data;
+    const { walletAddress } = loginSchema.parse(req.body);
     const dataSource = getDataSource();
     const userRepository = dataSource.getRepository(User);
 
@@ -154,23 +130,11 @@ usersRouter.get("/:walletAddress", async (req: Request, res: Response, next: Nex
   try {
     const { walletAddress } = req.params;
 
-    // Validate wallet address format
-    const parsed = userRegistrationSchema.shape.walletAddress.safeParse(walletAddress);
-    if (!parsed.success) {
-      throw new AppError(
-        ErrorType.VALIDATION,
-        ErrorCode.VALIDATION_ERROR,
-        "Invalid wallet address format.",
-        undefined,
-        parsed.error.flatten()
-      );
-    }
-
     const dataSource = getDataSource();
     const userRepository = dataSource.getRepository(User);
 
     const user = await userRepository.findOne({
-      where: { walletAddress: parsed.data }
+      where: { walletAddress: userRegistrationSchema.shape.walletAddress.parse(walletAddress) }
     });
 
     if (!user) {
