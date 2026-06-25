@@ -1,5 +1,7 @@
 #![cfg(test)]
 
+extern crate std;
+
 use super::*;
 use soroban_sdk::{
     testutils::{Address as _, Events as _},
@@ -23,10 +25,11 @@ fn create_test_env() -> (Env, Address, Address) {
 
 fn make_collaborators(env: &Env, addresses: Vec<Address>, bps: Vec<u32>) -> Vec<Collaborator> {
     let mut collabs = Vec::new(env);
-    for (addr, bp) in addresses.iter().zip(bps.iter()) {
+    for (i, (addr, bp)) in addresses.iter().zip(bps.iter()).enumerate() {
+        let alias_str = std::format!("Collaborator {}", i);
         collabs.push_back(Collaborator {
             address: addr.clone(),
-            alias: String::from_str(env, "Test User"),
+            alias: String::from_str(env, &alias_str),
             basis_points: bp,
         });
     }
@@ -547,9 +550,12 @@ fn test_update_collaborators_emits_event() {
     let events = env.events().all();
     let last_event = events.last().unwrap();
     assert_eq!(last_event.0, contract_id);
-    assert_eq!(last_event.1.get(0).unwrap(), Symbol::new(&env, "collaborators_updated").into_val(&env));
-    assert_eq!(last_event.1.get(1).unwrap(), project_id.into_val(&env));
-    assert_eq!(last_event.2, project_id.into_val(&env));
+    let event_type: Symbol = last_event.1.get(0).unwrap().into_val(&env);
+    assert_eq!(event_type, Symbol::new(&env, "collaborators_updated"));
+    let event_project_id: Symbol = last_event.1.get(1).unwrap().into_val(&env);
+    assert_eq!(event_project_id, project_id);
+    let event_data: Symbol = last_event.2.clone().into_val(&env);
+    assert_eq!(event_data, project_id);
 }
 
 #[test]
@@ -1654,13 +1660,17 @@ fn test_pause_and_unpause_emit_events() {
 
     let pause_event = events.get(before_count).unwrap();
     assert_eq!(pause_event.0, contract_id);
-    assert_eq!(pause_event.1.get(0).unwrap(), Symbol::new(&env, "distributions_paused").into_val(&env));
-    assert_eq!(pause_event.1.get(1).unwrap(), admin.clone().into_val(&env));
+    let pause_event_type: Symbol = pause_event.1.get(0).unwrap().into_val(&env);
+    assert_eq!(pause_event_type, Symbol::new(&env, "distributions_paused"));
+    let pause_admin: Address = pause_event.1.get(1).unwrap().into_val(&env);
+    assert_eq!(pause_admin, admin);
 
     let unpause_event = events.get(before_count + 1).unwrap();
     assert_eq!(unpause_event.0, contract_id);
-    assert_eq!(unpause_event.1.get(0).unwrap(), Symbol::new(&env, "distributions_unpaused").into_val(&env));
-    assert_eq!(unpause_event.1.get(1).unwrap(), admin.clone().into_val(&env));
+    let unpause_event_type: Symbol = unpause_event.1.get(0).unwrap().into_val(&env);
+    assert_eq!(unpause_event_type, Symbol::new(&env, "distributions_unpaused"));
+    let unpause_admin: Address = unpause_event.1.get(1).unwrap().into_val(&env);
+    assert_eq!(unpause_admin, admin);
 }
 
 #[test]
@@ -2344,8 +2354,8 @@ fn test_unallocated_balance_remains_correct_after_claim() {
     assert_eq!(client.get_unallocated_balance(&token), 50_0000000i128);
 
     let claimed_amount = client.claim(&project_id, &alice);
-    assert_eq!(claimed_amount, 60_000000i128);
-    assert_eq!(token_client.balance(&alice), 60_000000i128);
+    assert_eq!(claimed_amount, 60_0000000i128);
+    assert_eq!(token_client.balance(&alice), 60_0000000i128);
     assert_eq!(client.get_unallocated_balance(&token), 50_0000000i128);
     assert_eq!(client.get_balance(&project_id), 40_0000000i128);
 }
@@ -3002,7 +3012,7 @@ fn test_claim_reduces_project_balance() {
     client.claim(&project_id, &alice);
 
     // Remaining balance should be 4_000_000 (bob's half)
-    let remaining = client.get_balance(&project_id).unwrap();
+    let remaining = client.get_balance(&project_id);
     assert_eq!(remaining, 4_000_000, "project balance must be reduced by alice's claimed share");
 }
 
