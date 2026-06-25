@@ -3,19 +3,38 @@ name: Frontend Quality
 on:
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-quality-${{ github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   quality:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      CI: "true"
+      NEXT_PUBLIC_CONTRACT_ID: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
 
-      - run: npm ci
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
 
-      - run: npm run lint
+      - name: Lint
+        run: npm run lint -w frontend
 
-      - run: npm run test
+      - name: Test
+        run: npm run test -w frontend
 
-      - run: npm run build
+      - name: Build
+        run: npm run build -w frontend

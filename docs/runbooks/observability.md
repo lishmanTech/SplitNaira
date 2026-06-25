@@ -24,9 +24,15 @@ Configure Render/orchestrator probes:
 Exposed series:
 
 - `splitnaira_validation_failures_total` — response schema validation failures
+- `splitnaira_http_requests_total{method,route,status}` — total HTTP requests by route and status
+- `splitnaira_http_request_duration_seconds_sum{method,route}` — cumulative request latency in seconds
+- `splitnaira_http_request_duration_seconds_count{method,route}` — number of latency samples per route
+- `splitnaira_http_requests_inflight` — current in-flight HTTP requests
 - `splitnaira_process_uptime_seconds`
 - `splitnaira_process_heap_bytes`
 - `splitnaira_info{version="..."}`
+
+Contract-level telemetry is also available through on-chain event topics emitted by the SplitNaira contract. Analytics consumers should combine backend metrics with contract event streams for richer Insights.
 
 Scrape from internal network only; do not expose publicly without auth.
 
@@ -45,6 +51,8 @@ BACKEND_URL=https://your-api.example.com node scripts/deploy-smoke-check.mjs
 ```
 
 Polls `/health/ready` every 10s for up to 5 minutes.
+
+When `BACKEND_METRICS_URL` is also configured, the smoke check validates the analytics/metrics exposition endpoint after readiness succeeds. This ensures the deployment is not only live, but also emitting the telemetry needed for Analytics & Insights.
 
 ## Incident Investigation
 

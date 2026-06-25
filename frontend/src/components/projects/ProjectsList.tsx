@@ -1,6 +1,7 @@
 "use client";
 
 import { clsx } from "clsx";
+import { sanitizeText } from "@/lib/security";
 import type { SplitProject } from "@/lib/stellar";
 import type { ProjectHistoryItem, AdminStatusState } from "@/lib/api";
 import type { WalletState } from "@/lib/wallet";
@@ -16,6 +17,7 @@ interface ProjectsListProps {
   isLoadingProjectsList: boolean;
   projectsListError: string | null;
   isProjectsListStale: boolean;
+  hasMoreProjects: boolean;
   fetchedProject: SplitProject | null;
   setFetchedProject: (p: SplitProject | null) => void;
   fetchHistory: (id: string, cursor?: string) => Promise<void>;
@@ -41,6 +43,7 @@ export function ProjectsList({
   isLoadingProjectsList,
   projectsListError,
   isProjectsListStale,
+  hasMoreProjects,
   fetchedProject,
   setFetchedProject,
   fetchHistory,
@@ -96,7 +99,7 @@ export function ProjectsList({
                   }}
                   className="glass-card rounded-[2.5rem] p-8 text-left hover:bg-white/5 transition-all"
                 >
-                  <h3 className="font-display text-xl mb-1">{p.title}</h3>
+                  <h3 className="font-display text-xl mb-1">{sanitizeText(p.title)}</h3>
                   <p className="font-mono text-[10px] text-muted mb-4">{p.projectId}</p>
                   <div className="flex justify-between border-t border-white/5 pt-4">
                     <span className="text-xl font-display text-greenBright">
@@ -112,8 +115,36 @@ export function ProjectsList({
               <p className="text-muted text-sm font-medium">
                 {projectsListError
                   ? "Could not load projects. Retry refresh."
-                  : "No projects loaded yet. Click Refresh Projects to load."}
+                  : "No projects found. Click Refresh Projects to load."}
               </p>
+            </div>
+          )}
+
+          {/* Load more — visible when backend signals more pages exist (#380) */}
+          {projectsList.length > 0 && (
+            <div className="flex flex-col items-center gap-3">
+              {hasMoreProjects ? (
+                <button
+                  onClick={() => void onFetchProjectsList(true)}
+                  disabled={isLoadingProjectsList}
+                  className="premium-button rounded-2xl bg-white/5 border border-white/10 px-10 py-4 text-xs font-bold uppercase tracking-widest text-muted hover:text-ink hover:bg-white/10 transition-all disabled:opacity-30"
+                >
+                  {isLoadingProjectsList ? (
+                    <span className="flex items-center gap-2">
+                      <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 12a8 8 0 018-8v8z" />
+                      </svg>
+                      Loading…
+                    </span>
+                  ) : (
+                    "Load More ↓"
+                  )}
+                </button>
+              ) : (
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted opacity-40">
+                  All projects loaded
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -133,9 +164,9 @@ export function ProjectsList({
             <div className="flex flex-wrap items-center justify-between gap-6 border-b border-white/5 pb-8">
               <div className="space-y-1">
                 <div className="flex items-center gap-3">
-                  <h2 className="font-display text-3xl tracking-tight">{fetchedProject.title}</h2>
+                  <h2 className="font-display text-3xl tracking-tight">{sanitizeText(fetchedProject.title)}</h2>
                   <span className="rounded-full bg-white/5 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-muted border border-white/5">
-                    {fetchedProject.projectType}
+                    {sanitizeText(fetchedProject.projectType)}
                   </span>
                 </div>
                 <p className="font-mono text-xs text-muted opacity-60 break-all">{fetchedProject.projectId}</p>
@@ -158,7 +189,7 @@ export function ProjectsList({
                   {fetchedProject.collaborators.map((collab, idx) => (
                     <div key={idx} className="flex justify-between items-center rounded-2xl bg-white/2 p-4 text-sm border border-white/5 hover:bg-white/4 transition-colors">
                       <div className="space-y-0.5">
-                        <p className="font-bold">{collab.alias}</p>
+                        <p className="font-bold">{sanitizeText(collab.alias)}</p>
                         <p className="font-mono text-[10px] text-muted opacity-60 truncate max-w-[150px]">{collab.address}</p>
                       </div>
                       <span className="font-mono font-bold text-greenBright/80">

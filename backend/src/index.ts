@@ -6,6 +6,7 @@ import morgan from "morgan";
 import dotenv from "dotenv";
 import swaggerUi from "swagger-ui-express";
 import { healthRouter, markStartupComplete } from "./routes/health.js";
+import { opsRouter } from "./routes/ops.js";
 import { isMetricsEnabled, metricsRouter } from "./routes/metrics.js";
 import { splitsRouter } from "./routes/splits.js";
 import { docsRouter } from "./routes/docs.js";
@@ -13,7 +14,12 @@ import { usersRouter } from "./routes/users.js";
 import { transactionsRouter } from "./routes/transactions.js";
 import { errorHandler, notFoundHandler } from "./middleware/error.js";
 import { requestIdMiddleware } from "./middleware/request-id.js";
+import { metricsMiddleware } from "./middleware/metrics.js";
 import { globalLimiter, readLimiter, writeLimiter, adminLimiter, authLimiter } from "./middleware/rate-limit.js";
+import {
+  enforcePaymentsAdminWriteEnabled,
+  requirePaymentsAdminAccess
+} from "./middleware/payments-admin.js";
 import { validateEnv, printEnvDiagnostics } from "./config/env.js";
 import { initDatabase, closeDatabase } from "./services/database.js";
 import { logger } from "./services/logger.js";
@@ -31,10 +37,29 @@ const corsOrigins = process.env.CORS_ORIGIN
 
 const corsOrigin = corsOrigins.length > 0 ? corsOrigins : false;
 
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:"],
+      connectSrc: ["'self'"]
+    }
+  },
+  hsts: {
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true
+  },
+  frameguard: { action: 'deny' },
+  xssFilter: true,
+  noSniff: true,
+}));
 app.use(cors({ origin: corsOrigin }));
 app.use(express.json({ limit: "1mb" }));
 app.use(requestIdMiddleware);
+app.use(metricsMiddleware);
 
 // Global safety-net — must run before all route-specific limiters (#290)
 app.use(globalLimiter);
@@ -65,7 +90,12 @@ app.use(
 );
 
 app.use("/health", readLimiter);
-app.use("/splits/admin", adminLimiter);
+app.use(
+  "/splits/admin",
+  adminLimiter,
+  requirePaymentsAdminAccess,
+  enforcePaymentsAdminWriteEnabled
+);
 app.use("/splits", (req, res, next) => {
   if (req.method === "GET") return readLimiter(req, res, next);
   return writeLimiter(req, res, next);
@@ -91,8 +121,7 @@ app.use("/health", healthRouter);
 if (isMetricsEnabled()) {
   app.use("/metrics", metricsRouter);
 }
-app.use("/splits", splitsRouter);
-app.use("/docs", docsRouter);
+app.use("/splits", splitsRouter);app.use("/ops", opsRouter);app.use("/docs", docsRouter);
 app.use("/users", usersRouter);
 app.use("/transactions", transactionsRouter);
 

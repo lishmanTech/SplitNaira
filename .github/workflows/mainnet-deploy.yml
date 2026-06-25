@@ -17,9 +17,10 @@ permissions:
 
 concurrency:
   group: mainnet-deploy
-  cancel-in-progress: true
+  cancel-in-progress: false   # never cancel an in-flight mainnet deploy
 
 jobs:
+  # ── 1. Pre-flight: validate all required mainnet secrets & config ──────────
   validate-mainnet-config:
     runs-on: ubuntu-latest
     env:
@@ -30,16 +31,87 @@ jobs:
       MAINNET_CONTRACT_ID: ${{ secrets.MAINNET_CONTRACT_ID }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v6
+
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
+
       - run: npm ci --no-audit --no-fund
+
       - name: Validate mainnet deploy configuration
         run: npx tsx backend/src/utils/deploy-config.ts validate "$DEPLOY_TARGET_INPUT" "$DEPLOY_ENV_INPUT"
 
-  deploy-mainnet:
+      - name: Assert required mainnet secrets are present
+        run: |
+          missing=()
+          [ -z "$MAINNET_CONTRACT_ID" ]              && missing+=("MAINNET_CONTRACT_ID")
+          [ -z "$RENDER_BACKEND_DEPLOY_HOOK_URL" ]   && missing+=("RENDER_BACKEND_DEPLOY_HOOK_URL")
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "ERROR: Missing required mainnet secrets: ${missing[*]}"
+            exit 1
+          fi
+          echo "All required mainnet secrets are present."
+
+  # ── 2. Full backend verification before touching production ───────────────
+  verify-backend-mainnet:
     runs-on: ubuntu-latest
     needs: validate-mainnet-config
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+        working-directory: .
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Run tests
+        run: npm run test
+
+  # ── 3. Mainnet readiness gate ─────────────────────────────────────────────
+  mainnet-readiness-gate:
+    runs-on: ubuntu-latest
+    needs: verify-backend-mainnet
+    steps:
+      - name: Check mainnet readiness endpoint
+        if: vars.MAINNET_READINESS_URL != ''
+        env:
+          READINESS_URL: ${{ vars.MAINNET_READINESS_URL }}
+        run: |
+          echo "Polling mainnet readiness at $READINESS_URL ..."
+          for i in $(seq 1 10); do
+            STATUS=$(curl --silent --max-time 10 --write-out "%{http_code}" --output /dev/null "$READINESS_URL/ops/mainnet-readiness" || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "Mainnet readiness check passed (HTTP $STATUS)."
+              exit 0
+            fi
+            echo "Attempt $i: HTTP $STATUS — retrying in 15s..."
+            sleep 15
+          done
+          echo "ERROR: Mainnet readiness endpoint did not return 200 after 10 attempts."
+          exit 1
+
+      - name: Skip readiness gate (MAINNET_READINESS_URL not configured)
+        if: vars.MAINNET_READINESS_URL == ''
+        run: echo "MAINNET_READINESS_URL not configured — skipping pre-deploy readiness gate."
+
+  # ── 4. Deploy to production ───────────────────────────────────────────────
+  deploy-mainnet:
+    runs-on: ubuntu-latest
+    needs: mainnet-readiness-gate
     environment: production
     env:
       DEPLOY_TARGET_INPUT: ${{ github.event.inputs.deploy_target }}
@@ -47,6 +119,7 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
       - name: Resolve deploy target
         id: target
         run: |
@@ -69,7 +142,7 @@ jobs:
             echo "Missing required secret: RENDER_BACKEND_DEPLOY_HOOK_URL"
             exit 1
           fi
-          curl --fail --silent --show-error -X POST "$RENDER_BACKEND_DEPLOY_HOOK_URL"
+          curl --fail --silent --show-error -X POST "$RENDER_DEPLOY_HOOK_URL"
           echo "Render deploy triggered successfully."
 
       - name: Fail on unsupported deploy target
@@ -79,20 +152,56 @@ jobs:
           echo "Supported targets: render"
           exit 1
 
+  # ── 5. Post-deploy smoke test ─────────────────────────────────────────────
   post-deploy-smoke:
     runs-on: ubuntu-latest
     needs: deploy-mainnet
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v6
+
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
+
+      - name: Install root dependencies
+        run: npm ci --no-audit --no-fund
+
       - name: Post-deploy readiness smoke check
         if: vars.BACKEND_SMOKE_URL != ''
         env:
           BACKEND_URL: ${{ vars.BACKEND_SMOKE_URL }}
+          BACKEND_METRICS_URL: ${{ vars.BACKEND_METRICS_URL }}
+          CHECK_METRICS: ${{ vars.BACKEND_METRICS_URL != '' && 'true' || 'false' }}
           SMOKE_TIMEOUT_MS: 300000
         run: node scripts/deploy-smoke-check.mjs
+
       - name: Skip smoke check when BACKEND_SMOKE_URL is unset
         if: vars.BACKEND_SMOKE_URL == ''
         run: echo "BACKEND_SMOKE_URL not configured — skipping post-deploy smoke check."
+
+  # ── 6. Rollback instructions on failure ───────────────────────────────────
+  notify-on-failure:
+    runs-on: ubuntu-latest
+    needs: [deploy-mainnet, post-deploy-smoke]
+    if: failure()
+    steps:
+      - name: Print rollback instructions
+        run: |
+          echo "============================================================"
+          echo "  MAINNET DEPLOY FAILED — ROLLBACK INSTRUCTIONS"
+          echo "============================================================"
+          echo ""
+          echo "1. Identify the last known-good deploy hook URL from Render dashboard."
+          echo "2. Re-trigger the previous stable deploy via Render dashboard or:"
+          echo "   curl -X POST \$RENDER_BACKEND_DEPLOY_HOOK_URL_STABLE"
+          echo ""
+          echo "3. Verify recovery:"
+          echo "   curl \$BACKEND_SMOKE_URL/health/ready"
+          echo "   curl \$BACKEND_SMOKE_URL/ops/mainnet-readiness"
+          echo ""
+          echo "4. If DB migration caused the failure, revert with:"
+          echo "   npm run migration:revert -w backend"
+          echo ""
+          echo "See docs/runbooks/mainnet-launch.md for full rollback procedure."
+          echo "============================================================"

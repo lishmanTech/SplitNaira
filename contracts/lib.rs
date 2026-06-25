@@ -13,8 +13,18 @@ const PROJECT_ID_BUCKET_SIZE: u32 = 100;
 mod errors;
 mod events;
 use events::{
-    DepositReceived, DistributionComplete, MetadataUpdated, OwnershipTransferred, PaymentSent,
-    ProjectCreated, ProjectLocked, UnallocatedWithdrawn,
+    CollaboratorsUpdated,
+    DepositReceived,
+    DistributionComplete,
+    DistributionsPaused,
+    DistributionsUnpaused,
+    MetadataUpdated,
+    OwnershipTransferred,
+    PaymentSent,
+    ProjectCreated,
+    ProjectLocked,
+  CollaboratorClaimed,
+    UnallocatedWithdrawn,
 };
 #[cfg(test)]
 mod tests;
@@ -96,6 +106,8 @@ pub enum DataKey {
     AllowedTokenList,
     /// Allowlisted token contract address marker
     AllowedToken(Address),
+    /// Cached total of all project balances for a given token
+    AccountedTokenBalance(Address),
     /// Global flag to pause all distributions (emergency stop)
     DistributionsPaused,
 }
@@ -150,6 +162,8 @@ impl SplitNairaContract {
         env.storage()
             .persistent()
             .set(&DataKey::DistributionsPaused, &true);
+
+        DistributionsPaused { admin: admin.clone() }.publish(&env);
         Ok(())
     }
 
@@ -160,6 +174,8 @@ impl SplitNairaContract {
         env.storage()
             .persistent()
             .set(&DataKey::DistributionsPaused, &false);
+
+        DistributionsUnpaused { admin: admin.clone() }.publish(&env);
         Ok(())
     }
 
@@ -379,8 +395,13 @@ impl SplitNairaContract {
         project.collaborators = collaborators;
         env.storage()
             .persistent()
-            .set(&DataKey::Project(project_id), &project);
+            .set(&DataKey::Project(project_id.clone()), &project);
         Self::bump_project_ttl(&env, &project.project_id);
+
+        CollaboratorsUpdated {
+            project_id: project_id.clone(),
+        }
+        .publish(&env);
 
         Ok(())
     }
@@ -458,6 +479,7 @@ impl SplitNairaContract {
             .persistent()
             .set(&DataKey::ProjectBalance(project_id.clone()), &new_balance);
         Self::bump_project_ttl(&env, &project_id);
+        Self::adjust_accounted_token_balance(&env, &project.token, amount)?;
 
         DepositReceived {
             project_id: project_id.clone(),
@@ -564,6 +586,7 @@ impl SplitNairaContract {
             &DataKey::ProjectBalance(project_id.clone()),
             &remaining_balance,
         );
+        Self::adjust_accounted_token_balance(&env, &project.token, -total_sent)?;
 
         project.total_distributed += total_sent;
         project.distribution_round += 1;
@@ -611,6 +634,112 @@ impl SplitNairaContract {
         }
 
         Ok(())
+    }
+
+    // ----------------------------------------------------------
+    // SELF-SERVICE CLAIM (User Onboarding — Wave 5)
+    // ----------------------------------------------------------
+
+    /// Allows an individual collaborator to pull their proportional share of
+    /// the current project balance without requiring a full `distribute` call.
+    ///
+    /// This is the pull-based counterpart to the push-based `distribute`.
+    /// It is the primary onboarding path for new collaborators who want to
+    /// claim earnings at their own cadence.
+    ///
+    /// # Behaviour
+    /// - If `claimer` is not a collaborator on the project, returns `NotACollaborator`.
+    /// - If the project balance is zero, returns `Ok(0)` (no error, nothing transferred).
+    /// - Otherwise transfers `floor(balance × basis_points / 10_000)` tokens to
+    ///   `claimer`, reduces `ProjectBalance` by that amount, and updates the
+    ///   per-address `Claimed` ledger entry.
+    /// - Emits a `CollaboratorClaimed` event on every non-zero transfer.
+    ///
+    /// # Errors
+    /// * `SplitError::NotFound`          — project does not exist
+    /// * `SplitError::NotACollaborator`  — claimer is not a collaborator
+    /// * `SplitError::DistributionsPaused` — global pause is active
+    pub fn claim(
+        env: Env,
+        project_id: Symbol,
+        claimer: Address,
+    ) -> Result<i128, SplitError> {
+        claimer.require_auth();
+
+        let paused: bool = env
+            .storage()
+            .persistent()
+            .get::<DataKey, bool>(&DataKey::DistributionsPaused)
+            .unwrap_or(false);
+        if paused {
+            return Err(SplitError::DistributionsPaused);
+        }
+
+        let project = Self::get_project_or_err(&env, &project_id)?;
+
+        // Locate the claimer in the collaborator list
+        let mut claimer_bps: Option<u32> = None;
+        for collab in project.collaborators.iter() {
+            if collab.address == claimer {
+                claimer_bps = Some(collab.basis_points);
+                break;
+            }
+        }
+        let basis_points = claimer_bps.ok_or(SplitError::NotACollaborator)?;
+
+        let balance: i128 = env
+            .storage()
+            .persistent()
+            .get::<DataKey, i128>(&DataKey::ProjectBalance(project_id.clone()))
+            .unwrap_or(0);
+
+        if balance <= 0 {
+            return Ok(0);
+        }
+
+        let amount = (balance * basis_points as i128) / 10_000;
+        if amount <= 0 {
+            return Ok(0);
+        }
+
+        // Reduce project balance
+        env.storage()
+            .persistent()
+            .set(&DataKey::ProjectBalance(project_id.clone()), &(balance - amount));
+        Self::adjust_accounted_token_balance(&env, &project.token, -amount)?;
+
+        // Record the payout in the project distribution totals.
+        let mut updated_project = project.clone();
+        updated_project.total_distributed += amount;
+        env.storage()
+            .persistent()
+            .set(&DataKey::Project(project_id.clone()), &updated_project);
+        Self::bump_project_ttl(&env, &project_id);
+
+        // Update per-address claimed ledger
+        let prev_claimed: i128 = env
+            .storage()
+            .persistent()
+            .get::<DataKey, i128>(&DataKey::Claimed(project_id.clone(), claimer.clone()))
+            .unwrap_or(0);
+        env.storage().persistent().set(
+            &DataKey::Claimed(project_id.clone(), claimer.clone()),
+            &(prev_claimed + amount),
+        );
+        Self::bump_claimed_ttl(&env, &project_id, &claimer);
+
+        // Transfer tokens to claimer
+        let token_client = token::Client::new(&env, &project.token);
+        token_client.transfer(&env.current_contract_address(), &claimer, &amount);
+
+        CollaboratorClaimed {
+            project_id: project_id.clone(),
+            claimer: claimer.clone(),
+            amount,
+        }
+        .publish(&env);
+
+        Ok(amount)
     }
 
     // ----------------------------------------------------------
@@ -709,7 +838,7 @@ impl SplitNairaContract {
         let token_client = token::Client::new(&env, &token);
         let contract_token_balance = token_client.balance(&contract_address);
 
-        let accounted = Self::sum_project_balances_for_token(&env, &token)?;
+        let accounted = Self::get_accounted_balance(&env, &token)?;
         Ok(contract_token_balance - accounted)
     }
 
@@ -728,6 +857,12 @@ impl SplitNairaContract {
 
         if amount <= 0 {
             return Err(SplitError::InvalidAmount);
+        }
+
+        // Security hardening (Wave 5 / issue #401): prevent accidental self-transfer
+        // that would lock funds inside the contract indefinitely.
+        if to == env.current_contract_address() {
+            return Err(SplitError::InvalidRecipient);
         }
 
         let available = Self::get_unallocated_balance(env.clone(), token.clone())?;
@@ -1126,6 +1261,29 @@ impl SplitNairaContract {
                 .get::<DataKey, Vec<Symbol>>(&DataKey::ProjectIds)
                 .unwrap_or(Vec::new(env))
         }
+    }
+
+    fn get_accounted_balance(env: &Env, token: &Address) -> Result<i128, SplitError> {
+        if let Some(cached) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, i128>(&DataKey::AccountedTokenBalance(token.clone()))
+        {
+            return Ok(cached);
+        }
+        Self::sum_project_balances_for_token(env, token)
+    }
+
+    fn adjust_accounted_token_balance(
+        env: &Env,
+        token: &Address,
+        delta: i128,
+    ) -> Result<(), SplitError> {
+        let key = DataKey::AccountedTokenBalance(token.clone());
+        let prev: i128 = env.storage().persistent().get::<DataKey, i128>(&key).unwrap_or(0);
+        let next = prev.checked_add(delta).ok_or(SplitError::ArithmeticOverflow)?;
+        env.storage().persistent().set(&key, &next);
+        Ok(())
     }
 
     fn sum_project_balances_for_token(env: &Env, token: &Address) -> Result<i128, SplitError> {
