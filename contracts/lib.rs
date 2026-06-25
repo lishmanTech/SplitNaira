@@ -13,28 +13,37 @@ const PROJECT_ID_BUCKET_SIZE: u32 = 100;
 mod errors;
 mod events;
 use events::{
-    CollaboratorsUpdated,
-    DepositReceived,
-    DistributionComplete,
-    DistributionsPaused,
-    DistributionsUnpaused,
-    MetadataUpdated,
-    OwnershipTransferred,
-    PaymentSent,
-    ProjectCreated,
-    ProjectLocked,
-  CollaboratorClaimed,
-    UnallocatedWithdrawn,
+    CollaboratorClaimed, CollaboratorsUpdated, DepositReceived, DistributionComplete,
+    DistributionsPaused, DistributionsUnpaused, MetadataUpdated, OwnershipTransferred, PaymentSent,
+    ProjectCreated, ProjectLocked, SplitsUpdatedWithPendingBalance, UnallocatedWithdrawn,
 };
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod hardening_tests;
 
 use errors::SplitError;
 
-// Keep active projects alive by extending persistent TTL whenever they are
-// created, mutated, distributed, or read.
+/// Keep active projects alive by extending persistent TTL whenever they are
+/// created, mutated, distributed, or read.
+/// Active projects survive at least 5 days without a read; any read operation resets this clock.
+///
+/// TODO: If the contract's administrative initialization pattern is extended in the future,
+/// these hard-coded constants should be considered for migration into configurable instance-storage values.
 const PROJECT_TTL_THRESHOLD_LEDGERS: u32 = 50_000;
+
+/// Keep active projects alive by extending persistent TTL whenever they are
+/// created, mutated, distributed, or read.
+/// Active projects survive at least 5 days without a read; any read operation resets this clock.
+///
+/// 100_000 ledgers ≈ 5.8 days at 5s/ledger close time.
+///
+/// TODO: If the contract's administrative initialization pattern is extended in the future,
+/// these hard-coded constants should be considered for migration into configurable instance-storage values.
 const PROJECT_TTL_BUMP_LEDGERS: u32 = 100_000;
+
+/// Maximum number of collaborators allowed in a single project
+const MAX_COLLABORATORS: u32 = 50;
 
 // ============================================================
 //  DATA TYPES
@@ -163,7 +172,10 @@ impl SplitNairaContract {
             .persistent()
             .set(&DataKey::DistributionsPaused, &true);
 
-        DistributionsPaused { admin: admin.clone() }.publish(&env);
+        DistributionsPaused {
+            admin: admin.clone(),
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -175,7 +187,10 @@ impl SplitNairaContract {
             .persistent()
             .set(&DataKey::DistributionsPaused, &false);
 
-        DistributionsUnpaused { admin: admin.clone() }.publish(&env);
+        DistributionsUnpaused {
+            admin: admin.clone(),
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -373,6 +388,10 @@ impl SplitNairaContract {
 
     /// Updates collaborator addresses and basis point splits for an existing project.
     /// Only the project owner can update, and only while the project is unlocked.
+    ///
+    /// Note: Changing splits applies immediately and affects both future deposits
+    /// and any undistributed pending balance. If updated while the project balance
+    /// is > 0, a `SplitsUpdatedWithPendingBalance` warning event is emitted.
     pub fn update_collaborators(
         env: Env,
         project_id: Symbol,
@@ -391,6 +410,20 @@ impl SplitNairaContract {
         }
 
         Self::validate_collaborators(&env, &collaborators)?;
+
+        let balance: i128 = env
+            .storage()
+            .persistent()
+            .get::<DataKey, i128>(&DataKey::ProjectBalance(project_id.clone()))
+            .unwrap_or(0);
+
+        if balance > 0 {
+            SplitsUpdatedWithPendingBalance {
+                project_id: project_id.clone(),
+                pending_balance: balance,
+            }
+            .publish(&env);
+        }
 
         project.collaborators = collaborators;
         env.storage()
@@ -464,6 +497,9 @@ impl SplitNairaContract {
         let project = Self::get_project_or_err(&env, &project_id)?;
         from.require_auth();
 
+        // Note: The token_client is derived directly from `project.token`.
+        // This makes it correct by construction. If the user approved a different token,
+        // the `token_client.transfer` call will simply fail at the Soroban level.
         let token_client = token::Client::new(&env, &project.token);
         let contract_address = env.current_contract_address();
         token_client.transfer(&from, &contract_address, &amount);
@@ -624,9 +660,16 @@ impl SplitNairaContract {
         }
 
         for project_id in project_ids.iter() {
+
+            if is_paused(&env) {
+                panic_with_error!(&env, SplitError::DistributionsPaused);
+            }
+            
             match Self::distribute(env.clone(), project_id) {
                 Ok(_) => {}
-                Err(SplitError::DistributionsPaused) => return Err(SplitError::DistributionsPaused),
+                Err(SplitError::DistributionsPaused) => {
+                    return Err(SplitError::DistributionsPaused)
+                }
                 Err(_) => {
                     // Gracefully skip other errors
                 }
@@ -659,11 +702,7 @@ impl SplitNairaContract {
     /// * `SplitError::NotFound`          — project does not exist
     /// * `SplitError::NotACollaborator`  — claimer is not a collaborator
     /// * `SplitError::DistributionsPaused` — global pause is active
-    pub fn claim(
-        env: Env,
-        project_id: Symbol,
-        claimer: Address,
-    ) -> Result<i128, SplitError> {
+    pub fn claim(env: Env, project_id: Symbol, claimer: Address) -> Result<i128, SplitError> {
         claimer.require_auth();
 
         let paused: bool = env
@@ -703,9 +742,10 @@ impl SplitNairaContract {
         }
 
         // Reduce project balance
-        env.storage()
-            .persistent()
-            .set(&DataKey::ProjectBalance(project_id.clone()), &(balance - amount));
+        env.storage().persistent().set(
+            &DataKey::ProjectBalance(project_id.clone()),
+            &(balance - amount),
+        );
         Self::adjust_accounted_token_balance(&env, &project.token, -amount)?;
 
         // Record the payout in the project distribution totals.
@@ -736,6 +776,7 @@ impl SplitNairaContract {
             project_id: project_id.clone(),
             claimer: claimer.clone(),
             amount,
+            distribution_round: project.distribution_round, // Add this line
         }
         .publish(&env);
 
@@ -1160,6 +1201,10 @@ impl SplitNairaContract {
             return Err(SplitError::TooFewCollaborators);
         }
 
+        if collaborators.len() > MAX_COLLABORATORS {
+            return Err(SplitError::TooManyCollaborators);
+        }
+
         let mut total_bp: u32 = 0;
         let mut seen: Map<Address, bool> = Map::new(env);
 
@@ -1280,8 +1325,14 @@ impl SplitNairaContract {
         delta: i128,
     ) -> Result<(), SplitError> {
         let key = DataKey::AccountedTokenBalance(token.clone());
-        let prev: i128 = env.storage().persistent().get::<DataKey, i128>(&key).unwrap_or(0);
-        let next = prev.checked_add(delta).ok_or(SplitError::ArithmeticOverflow)?;
+        let prev: i128 = env
+            .storage()
+            .persistent()
+            .get::<DataKey, i128>(&key)
+            .unwrap_or(0);
+        let next = prev
+            .checked_add(delta)
+            .ok_or(SplitError::ArithmeticOverflow)?;
         env.storage().persistent().set(&key, &next);
         Ok(())
     }
