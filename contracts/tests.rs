@@ -401,6 +401,38 @@ fn test_get_allowed_tokens_returns_paginated_allowlist() {
     );
 }
 
+#[test]
+fn test_create_project_too_many_collaborators() {
+    let (env, _admin, token) = create_test_env();
+    let contract_id = env.register_contract(None, SplitNairaContract);
+    let client = SplitNairaContractClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+
+    let mut addresses = Vec::new(&env);
+    let mut bps = Vec::new(&env);
+    // 51 collaborators
+    for _ in 0..51 {
+        addresses.push_back(Address::generate(&env));
+        bps.push_back(0u32); // temporarily 0, total 10000 later
+    }
+    // Set first one to 10000 to pass InvalidSplit if it ever reached there
+    bps.set(0, 10000u32);
+
+    let collabs = make_collaborators(&env, addresses, bps);
+
+    let result = client.try_create_project(
+        &owner,
+        &Symbol::new(&env, "too_many_collabs"),
+        &String::from_str(&env, "Too Many"),
+        &String::from_str(&env, "music"),
+        &token,
+        &collabs,
+    );
+
+    assert_eq!(result, Err(Ok(SplitError::TooManyCollaborators)));
+}
+
 // ============================================================
 //  UPDATE + LOCK TESTS
 // ============================================================
@@ -538,16 +570,15 @@ fn test_update_collaborators_emits_event() {
         Vec::from_slice(&env, &[5000u32, 5000u32]),
     );
 
-    client.update_collaborators(
-        &project_id,
-        &owner,
-        &updated_collabs,
-    );
+    client.update_collaborators(&project_id, &owner, &updated_collabs);
 
     let events = env.events().all();
     let last_event = events.last().unwrap();
     assert_eq!(last_event.0, contract_id);
-    assert_eq!(last_event.1.get(0).unwrap(), Symbol::new(&env, "collaborators_updated").into_val(&env));
+    assert_eq!(
+        last_event.1.get(0).unwrap(),
+        Symbol::new(&env, "collaborators_updated").into_val(&env)
+    );
     assert_eq!(last_event.1.get(1).unwrap(), project_id.into_val(&env));
     assert_eq!(last_event.2, project_id.into_val(&env));
 }
@@ -569,7 +600,14 @@ fn test_update_collaborators_fails_duplicate_collaborator() {
     );
 
     let project_id = Symbol::new(&env, "dup_collab_test");
-    client.create_project(&owner, &project_id, &String::from_str(&env, "Dup Collab"), &String::from_str(&env, "music"), &token, &collabs);
+    client.create_project(
+        &owner,
+        &project_id,
+        &String::from_str(&env, "Dup Collab"),
+        &String::from_str(&env, "music"),
+        &token,
+        &collabs,
+    );
 
     let bad_collabs = make_collaborators(
         &env,
@@ -598,7 +636,14 @@ fn test_update_collaborators_fails_invalid_split() {
     );
 
     let project_id = Symbol::new(&env, "invalid_split_test");
-    client.create_project(&owner, &project_id, &String::from_str(&env, "Invalid Split"), &String::from_str(&env, "music"), &token, &collabs);
+    client.create_project(
+        &owner,
+        &project_id,
+        &String::from_str(&env, "Invalid Split"),
+        &String::from_str(&env, "music"),
+        &token,
+        &collabs,
+    );
 
     let bad_collabs = make_collaborators(
         &env,
@@ -627,7 +672,14 @@ fn test_update_collaborators_fails_zero_share() {
     );
 
     let project_id = Symbol::new(&env, "zero_share_test");
-    client.create_project(&owner, &project_id, &String::from_str(&env, "Zero Share"), &String::from_str(&env, "music"), &token, &collabs);
+    client.create_project(
+        &owner,
+        &project_id,
+        &String::from_str(&env, "Zero Share"),
+        &String::from_str(&env, "music"),
+        &token,
+        &collabs,
+    );
 
     let bad_collabs = make_collaborators(
         &env,
@@ -637,6 +689,68 @@ fn test_update_collaborators_fails_zero_share() {
 
     let result = client.try_update_collaborators(&project_id, &owner, &bad_collabs);
     assert_eq!(result, Err(Ok(SplitError::ZeroShare)));
+}
+
+#[test]
+fn test_update_collaborators_with_pending_balance_emits_warning() {
+    let (env, _admin, token) = create_test_env();
+    let contract_id = env.register_contract(None, SplitNairaContract);
+    let client = SplitNairaContractClient::new(&env, &contract_id);
+
+    let owner = Address::generate(&env);
+    let funder = Address::generate(&env);
+    let alice = Address::generate(&env);
+    let bob = Address::generate(&env);
+    let carol = Address::generate(&env);
+
+    let collabs = make_collaborators(
+        &env,
+        Vec::from_slice(&env, &[alice.clone(), bob.clone()]),
+        Vec::from_slice(&env, &[6000u32, 4000u32]),
+    );
+
+    let project_id = Symbol::new(&env, "warn_balance");
+    client.create_project(
+        &owner,
+        &project_id,
+        &String::from_str(&env, "Warn Balance"),
+        &String::from_str(&env, "music"),
+        &token,
+        &collabs,
+    );
+
+    // Deposit funds to make project balance > 0
+    deposit_to_project(
+        &env,
+        &client,
+        &token,
+        &project_id,
+        &funder,
+        1_000_0000000i128,
+    );
+
+    let updated_collabs = make_collaborators(
+        &env,
+        Vec::from_slice(&env, &[alice.clone(), bob.clone(), carol.clone()]),
+        Vec::from_slice(&env, &[5000u32, 3000u32, 2000u32]),
+    );
+
+    client.update_collaborators(&project_id, &owner, &updated_collabs);
+
+    // Verify warning event was emitted
+    let events = env.events().all();
+    let mut warning_emitted = false;
+    for event in events.iter() {
+        if let Ok(topic) = Symbol::try_from_val(&env, &event.1.get(0).unwrap()) {
+            if topic == Symbol::new(&env, "splits_updated_with_pending_balance") {
+                warning_emitted = true;
+                assert_eq!(event.1.get(1).unwrap(), project_id.into_val(&env));
+                let balance_val: i128 = event.2.into_val(&env);
+                assert_eq!(balance_val, 1_000_0000000i128);
+            }
+        }
+    }
+    assert!(warning_emitted, "Warning event was not emitted");
 }
 
 #[test]
@@ -702,7 +816,14 @@ fn test_deposit_success() {
         &collabs,
     );
 
-    deposit_to_project(&env, &client, &token, &project_id, &funder, 1_000_0000000i128);
+    deposit_to_project(
+        &env,
+        &client,
+        &token,
+        &project_id,
+        &funder,
+        1_000_0000000i128,
+    );
 
     assert_eq!(client.get_balance(&project_id), 1_000_0000000i128);
 }
@@ -817,10 +938,24 @@ fn test_multiple_sequential_deposits() {
         &collabs,
     );
 
-    deposit_to_project(&env, &client, &token, &project_id, &funder1, 100_0000000i128);
+    deposit_to_project(
+        &env,
+        &client,
+        &token,
+        &project_id,
+        &funder1,
+        100_0000000i128,
+    );
     assert_eq!(client.get_balance(&project_id), 100_0000000i128);
 
-    deposit_to_project(&env, &client, &token, &project_id, &funder2, 250_0000000i128);
+    deposit_to_project(
+        &env,
+        &client,
+        &token,
+        &project_id,
+        &funder2,
+        250_0000000i128,
+    );
     assert_eq!(client.get_balance(&project_id), 350_0000000i128);
 
     deposit_to_project(&env, &client, &token, &project_id, &funder1, 50_0000000i128);
@@ -943,16 +1078,40 @@ fn test_batch_distribute_graceful_partial_failures() {
     let project_b = Symbol::new(&env, "project_b");
     let project_c = Symbol::new(&env, "project_c"); // empty project
 
-    client.create_project(&owner, &project_a, &String::from_str(&env, "Project A"), &String::from_str(&env, "music"), &token, &collabs);
-    client.create_project(&owner, &project_b, &String::from_str(&env, "Project B"), &String::from_str(&env, "art"), &token, &collabs);
-    client.create_project(&owner, &project_c, &String::from_str(&env, "Project C"), &String::from_str(&env, "video"), &token, &collabs);
+    client.create_project(
+        &owner,
+        &project_a,
+        &String::from_str(&env, "Project A"),
+        &String::from_str(&env, "music"),
+        &token,
+        &collabs,
+    );
+    client.create_project(
+        &owner,
+        &project_b,
+        &String::from_str(&env, "Project B"),
+        &String::from_str(&env, "art"),
+        &token,
+        &collabs,
+    );
+    client.create_project(
+        &owner,
+        &project_c,
+        &String::from_str(&env, "Project C"),
+        &String::from_str(&env, "video"),
+        &token,
+        &collabs,
+    );
 
     // Deposit to project_a and project_b
     deposit_to_project(&env, &client, &token, &project_a, &funder, 100_0000000i128);
     deposit_to_project(&env, &client, &token, &project_b, &funder, 200_0000000i128);
 
     // batch_distribute with project_c in the middle (which has zero balance)
-    let batch = Vec::from_slice(&env, &[project_a.clone(), project_c.clone(), project_b.clone()]);
+    let batch = Vec::from_slice(
+        &env,
+        &[project_a.clone(), project_c.clone(), project_b.clone()],
+    );
     client.batch_distribute(&batch);
 
     // Verify project_a distributed
@@ -992,7 +1151,14 @@ fn test_batch_distribute_fails_when_paused() {
     );
 
     let project_a = Symbol::new(&env, "project_a");
-    client.create_project(&owner, &project_a, &String::from_str(&env, "Project A"), &String::from_str(&env, "music"), &token, &collabs);
+    client.create_project(
+        &owner,
+        &project_a,
+        &String::from_str(&env, "Project A"),
+        &String::from_str(&env, "music"),
+        &token,
+        &collabs,
+    );
 
     // Set contract admin and pause distributions
     let admin = Address::generate(&env);
@@ -1701,13 +1867,22 @@ fn test_pause_and_unpause_emit_events() {
 
     let pause_event = events.get(before_count).unwrap();
     assert_eq!(pause_event.0, contract_id);
-    assert_eq!(pause_event.1.get(0).unwrap(), Symbol::new(&env, "distributions_paused").into_val(&env));
+    assert_eq!(
+        pause_event.1.get(0).unwrap(),
+        Symbol::new(&env, "distributions_paused").into_val(&env)
+    );
     assert_eq!(pause_event.1.get(1).unwrap(), admin.clone().into_val(&env));
 
     let unpause_event = events.get(before_count + 1).unwrap();
     assert_eq!(unpause_event.0, contract_id);
-    assert_eq!(unpause_event.1.get(0).unwrap(), Symbol::new(&env, "distributions_unpaused").into_val(&env));
-    assert_eq!(unpause_event.1.get(1).unwrap(), admin.clone().into_val(&env));
+    assert_eq!(
+        unpause_event.1.get(0).unwrap(),
+        Symbol::new(&env, "distributions_unpaused").into_val(&env)
+    );
+    assert_eq!(
+        unpause_event.1.get(1).unwrap(),
+        admin.clone().into_val(&env)
+    );
 }
 
 #[test]
@@ -2458,7 +2633,8 @@ fn test_withdraw_unallocated_fails_when_recipient_is_contract() {
     let contract_admin = Address::generate(&env);
     client.set_admin(&contract_admin);
 
-    let result = client.try_withdraw_unallocated(&contract_admin, &token, &contract_id, &1_0000000i128);
+    let result =
+        client.try_withdraw_unallocated(&contract_admin, &token, &contract_id, &1_0000000i128);
     assert_eq!(result, Err(Ok(SplitError::InvalidRecipient)));
 }
 
@@ -3004,10 +3180,12 @@ fn test_claim_transfers_proportional_share() {
     );
     let project_id = Symbol::new(&env, "claim_test");
     client.create_project(
-        &owner, &project_id,
+        &owner,
+        &project_id,
         &String::from_str(&env, "Claim Test"),
         &String::from_str(&env, "music"),
-        &token, &collabs,
+        &token,
+        &collabs,
     );
 
     let deposit_amount: i128 = 10_000_000;
@@ -3019,7 +3197,11 @@ fn test_claim_transfers_proportional_share() {
     // Alice has 60% of 10_000_000 = 6_000_000
     assert_eq!(claimed, 6_000_000, "alice should receive 60% of deposit");
     let bal_after = token::Client::new(&env, &token).balance(&alice);
-    assert_eq!(bal_after - bal_before, 6_000_000, "alice token balance must increase by claimed amount");
+    assert_eq!(
+        bal_after - bal_before,
+        6_000_000,
+        "alice token balance must increase by claimed amount"
+    );
 }
 
 #[test]
@@ -3038,10 +3220,12 @@ fn test_claim_reduces_project_balance() {
     );
     let project_id = Symbol::new(&env, "claim_bal");
     client.create_project(
-        &owner, &project_id,
+        &owner,
+        &project_id,
         &String::from_str(&env, "Balance Test"),
         &String::from_str(&env, "film"),
-        &token, &collabs,
+        &token,
+        &collabs,
     );
 
     deposit_to_project(&env, &client, &token, &project_id, &owner, 8_000_000);
@@ -3050,7 +3234,10 @@ fn test_claim_reduces_project_balance() {
 
     // Remaining balance should be 4_000_000 (bob's half)
     let remaining = client.get_balance(&project_id).unwrap();
-    assert_eq!(remaining, 4_000_000, "project balance must be reduced by alice's claimed share");
+    assert_eq!(
+        remaining, 4_000_000,
+        "project balance must be reduced by alice's claimed share"
+    );
 }
 
 #[test]
@@ -3069,17 +3256,22 @@ fn test_claim_increments_total_distributed() {
     );
     let project_id = Symbol::new(&env, "claim_total_distributed");
     client.create_project(
-        &owner, &project_id,
+        &owner,
+        &project_id,
         &String::from_str(&env, "Total Distributed Test"),
         &String::from_str(&env, "music"),
-        &token, &collabs,
+        &token,
+        &collabs,
     );
 
     deposit_to_project(&env, &client, &token, &project_id, &owner, 10_000_000);
     client.claim(&project_id, &alice);
 
     let project = client.get_project(&project_id).unwrap();
-    assert_eq!(project.total_distributed, 6_000_000, "total_distributed must track claimed payouts");
+    assert_eq!(
+        project.total_distributed, 6_000_000,
+        "total_distributed must track claimed payouts"
+    );
 }
 
 #[test]
@@ -3098,17 +3290,22 @@ fn test_claim_updates_claimed_ledger() {
     );
     let project_id = Symbol::new(&env, "claim_ledger");
     client.create_project(
-        &owner, &project_id,
+        &owner,
+        &project_id,
         &String::from_str(&env, "Ledger Test"),
         &String::from_str(&env, "podcast"),
-        &token, &collabs,
+        &token,
+        &collabs,
     );
 
     deposit_to_project(&env, &client, &token, &project_id, &owner, 10_000_000);
     client.claim(&project_id, &alice);
 
     let claimed_entry = client.get_claimed(&project_id, &alice);
-    assert_eq!(claimed_entry, 7_000_000, "claimed ledger must reflect alice's total claimed amount");
+    assert_eq!(
+        claimed_entry, 7_000_000,
+        "claimed ledger must reflect alice's total claimed amount"
+    );
 }
 
 #[test]
@@ -3127,15 +3324,20 @@ fn test_claim_returns_zero_when_no_balance() {
     );
     let project_id = Symbol::new(&env, "claim_zero");
     client.create_project(
-        &owner, &project_id,
+        &owner,
+        &project_id,
         &String::from_str(&env, "Zero Balance"),
         &String::from_str(&env, "art"),
-        &token, &collabs,
+        &token,
+        &collabs,
     );
 
     // No deposit — balance is zero
     let result = client.claim(&project_id, &alice);
-    assert_eq!(result, 0, "claim on empty balance must return 0 without error");
+    assert_eq!(
+        result, 0,
+        "claim on empty balance must return 0 without error"
+    );
 }
 
 #[test]
@@ -3156,10 +3358,12 @@ fn test_claim_fails_for_non_collaborator() {
     );
     let project_id = Symbol::new(&env, "claim_stranger");
     client.create_project(
-        &owner, &project_id,
+        &owner,
+        &project_id,
         &String::from_str(&env, "Stranger Test"),
         &String::from_str(&env, "book"),
-        &token, &collabs,
+        &token,
+        &collabs,
     );
 
     deposit_to_project(&env, &client, &token, &project_id, &owner, 1_000_000);
@@ -3187,10 +3391,12 @@ fn test_claim_fails_when_distributions_paused() {
     );
     let project_id = Symbol::new(&env, "claim_paused");
     client.create_project(
-        &owner, &project_id,
+        &owner,
+        &project_id,
         &String::from_str(&env, "Paused Test"),
         &String::from_str(&env, "music"),
-        &token, &collabs,
+        &token,
+        &collabs,
     );
 
     // Must panic with DistributionsPaused
@@ -3213,10 +3419,12 @@ fn test_claim_emits_collaborator_claimed_event() {
     );
     let project_id = Symbol::new(&env, "claim_event");
     client.create_project(
-        &owner, &project_id,
-        &String::from_str(&env, "Event Test"),
-        &String::from_str(&env, "music"),
-        &token, &collabs,
+        &owner,
+        &project_id,
+        &String::from_str(&env, "Test"),
+        &String::from_str(&env, "misc"),
+        &token,
+        &collabs,
     );
     deposit_to_project(&env, &client, &token, &project_id, &owner, 2_000_000);
 

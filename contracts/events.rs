@@ -211,10 +211,7 @@ pub struct DistributionsPaused {
 impl DistributionsPaused {
     pub fn publish(&self, env: &Env) {
         env.events().publish(
-            (
-                Symbol::new(env, "distributions_paused"),
-                self.admin.clone(),
-            ),
+            (Symbol::new(env, "distributions_paused"), self.admin.clone()),
             (),
         );
     }
@@ -241,8 +238,6 @@ impl DistributionsUnpaused {
     }
 }
 
-
-
 /// Emitted when a collaborator self-service claims their proportional share.
 ///
 /// Topics:  ["collaborator_claimed", project_id]
@@ -262,6 +257,28 @@ impl CollaboratorClaimed {
                 self.project_id.clone(),
             ),
             (self.claimer.clone(), self.amount),
+        );
+    }
+}
+
+/// Emitted when splits are updated while a project still has undistributed balance.
+///
+/// Topics:  ["splits_updated_with_pending_balance", project_id]
+/// Data:    (pending_balance in stroops)
+#[derive(Clone, Debug)]
+pub struct SplitsUpdatedWithPendingBalance {
+    pub project_id: Symbol,
+    pub pending_balance: i128,
+}
+
+impl SplitsUpdatedWithPendingBalance {
+    pub fn publish(&self, env: &Env) {
+        env.events().publish(
+            (
+                Symbol::new(env, "splits_updated_with_pending_balance"),
+                self.project_id.clone(),
+            ),
+            self.pending_balance,
         );
     }
 }
