@@ -584,18 +584,9 @@ fn test_update_collaborators_emits_event() {
     let events = env.events().all();
     let last_event = events.last().unwrap().clone();
     assert_eq!(last_event.0, contract_id);
-    assert_eq!(
-        Symbol::try_from_val(&env, &last_event.1.get(0).unwrap()).unwrap(),
-        Symbol::new(&env, "collaborators_updated")
-    );
-    assert_eq!(
-        Symbol::try_from_val(&env, &last_event.1.get(1).unwrap()).unwrap(),
-        project_id
-    );
-    assert_eq!(
-        Symbol::try_from_val(&env, &last_event.2).unwrap(),
-        project_id
-    );
+    assert_eq!(Symbol::from_val(&env, &last_event.1.get(0).unwrap()), Symbol::new(&env, "collaborators_updated"));
+    assert_eq!(Symbol::from_val(&env, &last_event.1.get(1).unwrap()), project_id);
+    assert_eq!(Symbol::from_val(&env, &last_event.2), project_id);
 }
 
 #[test]
@@ -1961,25 +1952,13 @@ fn test_pause_and_unpause_emit_events() {
 
     let pause_event = events.get(before_count).unwrap().clone();
     assert_eq!(pause_event.0, contract_id);
-    assert_eq!(
-        Symbol::try_from_val(&env, &pause_event.1.get(0).unwrap()).unwrap(),
-        Symbol::new(&env, "distributions_paused")
-    );
-    assert_eq!(
-        Address::try_from_val(&env, &pause_event.1.get(1).unwrap()).unwrap(),
-        admin
-    );
+    assert_eq!(Symbol::from_val(&env, &pause_event.1.get(0).unwrap()), Symbol::new(&env, "distributions_paused"));
+    assert_eq!(Address::from_val(&env, &pause_event.1.get(1).unwrap()), admin.clone());
 
     let unpause_event = events.get(before_count + 1).unwrap().clone();
     assert_eq!(unpause_event.0, contract_id);
-    assert_eq!(
-        Symbol::try_from_val(&env, &unpause_event.1.get(0).unwrap()).unwrap(),
-        Symbol::new(&env, "distributions_unpaused")
-    );
-    assert_eq!(
-        Address::try_from_val(&env, &unpause_event.1.get(1).unwrap()).unwrap(),
-        admin
-    );
+    assert_eq!(Symbol::from_val(&env, &unpause_event.1.get(0).unwrap()), Symbol::new(&env, "distributions_unpaused"));
+    assert_eq!(Address::from_val(&env, &unpause_event.1.get(1).unwrap()), admin.clone());
 }
 
 #[test]
@@ -3554,10 +3533,7 @@ fn test_claim_reduces_project_balance() {
 
     // Remaining balance should be 4_000_000 (bob's half)
     let remaining = client.get_balance(&project_id);
-    assert_eq!(
-        remaining, 4_000_000,
-        "project balance must be reduced by alice's claimed share"
-    );
+    assert_eq!(remaining, 4_000_000, "project balance must be reduced by alice's claimed share");
 }
 
 #[test]
@@ -3756,6 +3732,52 @@ fn test_claim_emits_collaborator_claimed_event() {
     );
 }
 
+#[test]
+fn test_get_allowed_tokens_pagination_skips_after_disallow() {
+    // Simulates the pagination-over-mutable-collection problem:
+    // If a token is removed between two paginated calls, indices shift
+    // and the caller may skip tokens. This test documents the known
+    // limitation by verifying the recommended safe usage pattern:
+    // fetch all tokens in one call using get_allowed_token_count.
+    let (env, _token_admin, _token) = create_test_env();
+    let contract_id = env.register_contract(None, SplitNairaContract);
+    let client = SplitNairaContractClient::new(&env, &contract_id);
+
+    // Set up admin
+    let admin = Address::generate(&env);
+    client.set_admin(&admin);
+
+    // Register three tokens
+    let token_a = Address::generate(&env);
+    let token_b = Address::generate(&env);
+    let token_c = Address::generate(&env);
+
+    client.allow_token(&admin, &token_a);
+    client.allow_token(&admin, &token_b);
+    client.allow_token(&admin, &token_c);
+
+    // Verify count is 3
+    assert_eq!(client.get_allowed_token_count(), 3);
+
+    // Safe usage pattern: fetch all in one call using the count
+    let count = client.get_allowed_token_count();
+    let all_tokens = client.get_allowed_tokens(&0, &count);
+    assert_eq!(all_tokens.len(), 3);
+
+    // Now simulate a concurrent modification: remove token_a (index 0)
+    client.disallow_token(&admin, &token_a);
+    assert_eq!(client.get_allowed_token_count(), 2);
+
+    // Demonstrate the pagination shift problem:
+    // Page 1 asked for index 0..1 before removal, but now index 0 is token_b
+    // A caller that cached "start=1" for page 2 would now get token_c
+    // and never see token_b — it gets skipped.
+    // The safe fix: always re-fetch from index 0 with the current count.
+    let safe_count = client.get_allowed_token_count();
+    let safe_fetch = client.get_allowed_tokens(&0, &safe_count);
+    assert_eq!(safe_fetch.len(), 2);
+    assert_eq!(safe_fetch.get(0).unwrap(), token_b);
+    assert_eq!(safe_fetch.get(1).unwrap(), token_c);
 
 #[test]
 fn test_batch_distribute_fails_when_paused_batch() {
