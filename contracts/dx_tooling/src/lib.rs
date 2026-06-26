@@ -1,11 +1,11 @@
 #![no_std]
 
-mod compiler;
-mod simulator;
-mod deployer;
-mod validator;
-mod types;
-mod errors;
+pub mod compiler;
+pub mod simulator;
+pub mod deployer;
+pub mod validator;
+pub mod types;
+pub mod errors;
 
 pub use compiler::*;
 pub use simulator::*;

@@ -1,7 +1,7 @@
-﻿#![no_std]
+#![no_std]
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, token, Address, Env, Map, String, Symbol, Vec,
+    contract, contractimpl, contracttype, panic_with_error, token, Address, Env, Map, String, Symbol, Vec,
 };
 
 /// Number of project IDs stored per bucket to avoid loading the entire index
@@ -27,6 +27,7 @@ use events::{
     TokenAllowed,
     TokenDisallowed,
     UnallocatedWithdrawn,
+    SplitsUpdatedWithPendingBalance,
 };
 #[cfg(test)]
 mod tests;
@@ -161,16 +162,14 @@ impl SplitNairaContract {
     /// If admin is not set yet, `admin` must authorize this call.
     /// If admin is already set, the current admin must authorize this call.
     pub fn set_admin(env: Env, admin: Address) -> Result<(), SplitError> {
-        admin.require_auth();
-
         if let Some(current_admin) = env
             .storage()
             .persistent()
             .get::<DataKey, Address>(&DataKey::Admin)
         {
-            if current_admin != admin {
-                return Err(SplitError::Unauthorized);
-            }
+            current_admin.require_auth();
+        } else {
+            admin.require_auth();
         }
 
         env.storage().persistent().set(&DataKey::Admin, &admin);
@@ -221,7 +220,7 @@ impl SplitNairaContract {
                 .persistent()
                 .get::<DataKey, Vec<Address>>(&DataKey::AllowedTokenList)
                 .unwrap_or(Vec::new(&env));
-            allowed_tokens.push_back(token);
+            allowed_tokens.push_back(token.clone());
             env.storage()
                 .persistent()
                 .set(&DataKey::AllowedTokenList, &allowed_tokens);
@@ -566,7 +565,7 @@ impl SplitNairaContract {
     /// - the final collaborator receives any integer-division remainder so
     ///   the full project balance is accounted for every round
     ///
-    /// Anyone can call distribute — the math is trustless.
+    /// Anyone can call distribute â€” the math is trustless.
     ///
     /// # Arguments
     /// * `env`        - Soroban environment
@@ -690,11 +689,11 @@ impl SplitNairaContract {
         let mut results = Vec::new(&env);
         for project_id in project_ids.iter() {
 
-            if is_paused(&env) {
+            if Self::is_distributions_paused(env.clone()) {
                 panic_with_error!(&env, SplitError::DistributionsPaused);
             }
             
-            match Self::distribute(env.clone(), project_id) {
+            match Self::distribute(env.clone(), project_id.clone()) {
                 Ok(_) => results.push_back((project_id, None)),
                 Err(SplitError::DistributionsPaused) => {
                     return Err(SplitError::DistributionsPaused)
@@ -707,7 +706,7 @@ impl SplitNairaContract {
     }
 
     // ----------------------------------------------------------
-    // SELF-SERVICE CLAIM (User Onboarding — Wave 5)
+    // SELF-SERVICE CLAIM (User Onboarding â€” Wave 5)
     // ----------------------------------------------------------
 
     /// Allows an individual collaborator to pull their proportional share of
@@ -720,16 +719,20 @@ impl SplitNairaContract {
     /// # Behaviour
     /// - If `claimer` is not a collaborator on the project, returns `NotACollaborator`.
     /// - If the project balance is zero, returns `Ok(0)` (no error, nothing transferred).
-    /// - Otherwise transfers `floor(balance × basis_points / 10_000)` tokens to
+    /// - Otherwise transfers `floor(balance Ã— basis_points / 10_000)` tokens to
     ///   `claimer`, reduces `ProjectBalance` by that amount, and updates the
     ///   per-address `Claimed` ledger entry.
     /// - Emits a `CollaboratorClaimed` event on every non-zero transfer.
     ///
     /// # Errors
-    /// * `SplitError::NotFound`          — project does not exist
-    /// * `SplitError::NotACollaborator`  — claimer is not a collaborator
-    /// * `SplitError::DistributionsPaused` — global pause is active
-    pub fn claim(env: Env, project_id: Symbol, claimer: Address) -> Result<i128, SplitError> {
+    /// * `SplitError::NotFound`          â€” project does not exist
+    /// * `SplitError::NotACollaborator`  â€” claimer is not a collaborator
+    /// * `SplitError::DistributionsPaused` â€” global pause is active
+    pub fn claim(
+        env: Env,
+        project_id: Symbol,
+        claimer: Address,
+    ) -> Result<i128, SplitError> {
         claimer.require_auth();
 
         let paused: bool = env
@@ -983,6 +986,21 @@ impl SplitNairaContract {
     }
 
     /// Returns a paginated list of allowlisted token addresses.
+    ///
+    /// # Pagination Stability Warning
+    /// This function reads from an ordered `Vec<Address>` (`AllowedTokenList`).
+    /// If `disallow_token` is called between two paginated calls, the list
+    /// shrinks and indices shift, which can cause tokens to be skipped or
+    /// repeated across pages.
+    ///
+    /// **Recommended usage:** When the token count is small (check via
+    /// `get_allowed_token_count`), prefer fetching all tokens in a single call:
+    /// ```text
+    /// let count = get_allowed_token_count();
+    /// let all_tokens = get_allowed_tokens(0, count);
+    /// ```
+    /// Paginated calls are safe only when the allowlist is not being modified
+    /// concurrently (e.g. read-only frontends during normal operation).
     pub fn get_allowed_tokens(env: Env, start: u32, limit: u32) -> Vec<Address> {
         let allowed_tokens: Vec<Address> = env
             .storage()
@@ -1102,7 +1120,7 @@ impl SplitNairaContract {
     /// Transfers ownership of a project to a new address.
     ///
     /// Only the current owner can call this. Works on both locked and unlocked
-    /// projects — ownership transfer does not depend on lock state. The new
+    /// projects â€” ownership transfer does not depend on lock state. The new
     /// owner gains all owner-gated capabilities (update metadata, update
     /// collaborators on unlocked projects, lock, transfer again).
     ///
