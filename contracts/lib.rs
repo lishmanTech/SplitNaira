@@ -560,10 +560,13 @@ impl SplitNairaContract {
     /// collaborators according to their basis point shares.
     ///
     /// Compatibility-sensitive invariants:
-    /// - `distribution_round` increments exactly once per successful call
-    /// - `total_distributed` increases by the exact amount paid out
-    /// - the final collaborator receives any integer-division remainder so
-    ///   the full project balance is accounted for every round
+/// - `distribution_round` increments exactly once per successful call
+/// - `total_distributed` increases by the exact amount paid out
+/// - the final collaborator receives any integer-division remainder so
+///   the full project balance is accounted for every round
+/// - Distribution is rejected if the project balance is smaller than the
+///   number of collaborators, ensuring each collaborator can receive at
+///   least one stroop.
     ///
     /// Anyone can call distribute â€” the math is trustless.
     ///
@@ -587,15 +590,21 @@ impl SplitNairaContract {
 
         let mut project = Self::get_project_or_err(&env, &project_id)?;
 
-        // Read project-scoped distributable balance.
-        let balance: i128 = env
-            .storage()
-            .persistent()
-            .get::<DataKey, i128>(&DataKey::ProjectBalance(project_id.clone()))
-            .unwrap_or(0);
-        if balance <= 0 {
-            return Err(SplitError::NoBalance);
-        }
+       let balance: i128 = env
+    .storage()
+    .persistent()
+    .get::<DataKey, i128>(&DataKey::ProjectBalance(project_id.clone()))
+    .unwrap_or(0);
+
+if balance <= 0 {
+    return Err(SplitError::NoBalance);
+}
+
+// Reject tiny balances that would otherwise result in one collaborator
+// receiving the entire remainder while others receive zero.
+if balance < project.collaborators.len() as i128 {
+    return Err(SplitError::NoBalance);
+}
 
         let token_client = token::Client::new(&env, &project.token);
         let contract_address = env.current_contract_address();
